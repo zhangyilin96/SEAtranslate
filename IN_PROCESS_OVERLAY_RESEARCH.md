@@ -35,7 +35,7 @@
 被观察进程：
 
 - PID（观察时）：`30396`
-- 可执行文件：`D:\SteamLibrary\steamapps\common\dota 2 beta\game\bin\win64\dota2.exe`
+- 可执行文件：`<SteamLibrary>\steamapps\common\dota 2 beta\game\bin\win64\dota2.exe`
 - 同时加载：`rendersystemdx11.dll`、`d3d11.dll`、`DXGI.dll`
 - 未在该次模块快照中观察到 `rendersystemvulkan.dll`
 

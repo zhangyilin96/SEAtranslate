@@ -1,17 +1,55 @@
+# JavaScript / desktop build output
 node_modules/
+build/
 dist/
+out/
 release/
 outputs/
-Dota Scout.exe
-native/**/*.exe
-native/native-overlay-poc/packages/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# Native / Visual Studio / NuGet build output
+bin/
+obj/
+**/bin/
+**/obj/
+.vs/
+AppPackages/
+packages/
+*.nupkg
+*.snupkg
+*.exe
+*.dll
 *.pdb
+
+# Local tool downloads and scratch state
+tools/vs-buildtools/
+work/
+cache/
+.cache/
+*.tmp
+*.temp
+*.log
+*.dmp
+*.dump
+
+# Local screenshots and generated smoke-test artifacts
+screenshots/
+
+# Secrets and local configuration
 .env
 .env.*
 !.env.example
-*.log
+*.pfx
+*.p12
+*.pem
+*.key
+*.cer
+*.crt
+credentials*.json
+secrets*.json
+
+# OS metadata
 .DS_Store
-.vite/
-coverage/
-work/
-*.tsbuildinfo
+Thumbs.db

@@ -1,0 +1,17 @@
+<Page
+    x:Class="DotaScout.GameBarWidget.WidgetPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:DotaScout.GameBarWidget"
+    Background="Transparent">
+    <Grid Background="#D90C121D">
+        <TextBlock
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            FontFamily="Segoe UI"
+            FontSize="26"
+            FontWeight="SemiBold"
+            Foreground="White"
+            Text="DOTA SCOUT GAME BAR TEST" />
+    </Grid>
+</Page>

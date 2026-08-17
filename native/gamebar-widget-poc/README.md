@@ -17,8 +17,11 @@ Scope boundaries:
 - pinning and Game Bar's built-in click-through capability are enabled in the
   package manifest.
 
-Build with `scripts/build-gamebar-widget-poc.ps1`. The script uses Microsoft
-NuGet packages and the inbox C# compiler, so Visual Studio is not required.
+Build with `scripts/build-gamebar-widget-poc.ps1`. The project deliberately uses
+the standard UWP XAML/MSBuild pipeline from the Visual Studio Build Tools UWP
+workload. This keeps XAML initialization and package metadata aligned with the
+official Xbox Game Bar widget sample instead of hand-compiling an AppContainer
+executable.
 
 Local installation requires either Windows Developer Mode or an MSIX code
 signing certificate trusted by Windows. The build script does not modify the

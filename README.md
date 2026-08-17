@@ -1,6 +1,8 @@
-# Dota Scout
+# Dota Scout / SEA Translate
 
-Dota Scout 是 Windows Dota 2 Companion 的本地验证版本。当前重点是功能真实性：没有可靠数据来源时不展示 LIVE 结果，Demo 和手动 Debug 永远明确标注。
+Dota Scout / SEA Translate 是 Windows Dota 2 SEA 实时聊天翻译助手。当前最高优先级是 Live Translate；Match Scout、Player DNA、Coach 与玩家评分分析暂停。没有可靠数据来源时不展示 LIVE 结果，Demo 和手动 Debug 永远明确标注。
+
+当前 Overlay 首选候选是 Xbox Game Bar Widget。它已经完成 Windowed、Borderless 与 Exclusive Fullscreen 的 captured live evidence 测试，但仍等待用户本人确认 Exclusive Fullscreen 肉眼可见和鼠标流畅度，因此尚未标记为 Production Ready。完整状态见 `PROJECT_STATUS.md`，下一阶段严格按 `NEXT_STEPS.md` 执行。
 
 ## 普通用户启动
 
@@ -19,15 +21,14 @@ Dota Scout 是 Windows Dota 2 Companion 的本地验证版本。当前重点是�
 - 手动十人输入只位于 `Settings → Developer / Debug`，结果标记 `DEBUG / MANUAL INPUT`。
 - 技术调研见 `PLAYER_ID_RESEARCH.md`。目前最值得继续验证的是 Overwolf GEP 在 Strategy Time 后提供的 roster；当前尚未集成。
 
-### Windows Overlay
+### Overlay 技术状态
 
-- 当前阶段只诊断极简 `DOTA SCOUT TEST`；OCR、翻译与 Match Scout 串联暂停。
-- Electron BrowserWindow 已实现 always-on-top、半透明、不可聚焦和鼠标穿透，并增加 Win32 `SetWindowPos(HWND_TOPMOST, SWP_NOACTIVATE)` helper。
-- 最终 portable 包已修复 Overlay 本地页面加载和首帧状态竞态，Desktop 实测 PASS。
-- Windowed 实测 PASS；Borderless 在当前 4K / 225% DPI 环境中只出现裁切/未完整渲染区域，产品级 FAIL；Exclusive Fullscreen 的独立 HWND 状态 PASS，但用户画面可见 FAIL。
-- 用户可见、自动截图、窗口状态与 Dota 焦点是四个独立状态；不会再用 `isVisible=true` 冒充游戏内可见。
-- 当前诊断热键为 Ctrl+Shift+F7（显示/隐藏）和 Ctrl+Shift+F8（选择 OCR 区域）。两组热键已在桌面、Dota 主菜单和真实 Bot 比赛中收到事件；完整结果见 `outputs/HOTKEY_DIAGNOSTIC_RESULT.md`。
-- Overlay 完整结论见 `outputs/OVERLAY_DIAGNOSTIC_RESULT.md`。
+- Xbox Game Bar Widget 是当前首选候选；PoC 位于 `native/gamebar-widget-poc/`。
+- External Native Overlay 保留为 fallback、Debug 和 Desktop preview；PoC 位于 `native/native-overlay-poc/`。
+- 自有 DX11 Harness 当前暂停；In-Process Dota loader、injector、Hook 路线冻结且禁止实现。
+- 用户可见、自动画面证据、窗口状态与 Dota 焦点是独立状态，不会互相冒充。
+- Ctrl+Shift+F7 / F8 已在桌面、Dota 主菜单和真实 Bot 比赛中收到事件；完整结果见 `docs/diagnostics/HOTKEY_DIAGNOSTIC_RESULT.md`。
+- External Overlay 完整结论见 `docs/diagnostics/OVERLAY_DIAGNOSTIC_RESULT.md`；Game Bar 结果见 `native/gamebar-widget-poc/TEST_RESULTS.md`。
 
 ### OCR 与 Live Translate
 
@@ -37,7 +38,7 @@ Dota Scout 是 Windows Dota 2 Companion 的本地验证版本。当前重点是�
 - 实时链路为：截图 → Tesseract.js OCR → 去重 → 自动语言检测 → 翻译 → Dota 术语修正 → 最近三条 Overlay。
 - OCR 模型：英语、泰语、马来语、印尼语；首次使用需联网下载模型。
 - 翻译默认使用实验性免 Key 通道；可选 Google Cloud Translation Key。
-- OCR/翻译代码保留，但按当前阶段要求暂停继续开发与游戏内串联。Overlay 至少达到稳定 Borderless PASS 前，不恢复实时模式验收。
+- OCR/翻译代码保留，但暂停新增功能与游戏内串联。先完成 Game Bar 用户确认，再验证 Desktop → Game Bar 的最小文本通信链。
 
 ## 数据边界
 

@@ -6,37 +6,16 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $sourceRoot = Join-Path $projectRoot "native\gamebar-widget-poc"
-$cacheRoot = Join-Path $projectRoot "work\gamebar-packages"
-$buildRoot = Join-Path $projectRoot "work\gamebar-widget-build"
-$layoutRoot = Join-Path $buildRoot "layout"
+$projectFile = Join-Path $sourceRoot "DotaScout.GameBarWidget.csproj"
+$buildRoot = Join-Path $projectRoot "work\gamebar-widget-msbuild"
+$assetRoot = Join-Path $buildRoot "Assets"
+$packageRoot = Join-Path $buildRoot "AppPackages"
+$nugetRoot = Join-Path $projectRoot "work\gamebar-msbuild-packages"
 $outputRoot = Join-Path $projectRoot "outputs\Game Bar Widget PoC"
 $dependencyRoot = Join-Path $outputRoot "Dependencies\x64"
-$compiler = "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-
-function Get-NuGetPackage {
-    param(
-        [Parameter(Mandatory = $true)][string]$Id,
-        [Parameter(Mandatory = $true)][string]$Version
-    )
-
-    $folderName = "$Id.$Version"
-    $archivePath = Join-Path $cacheRoot "$folderName.nupkg"
-    $expandedPath = Join-Path $cacheRoot $folderName
-
-    if (-not (Test-Path -LiteralPath $expandedPath)) {
-        New-Item -ItemType Directory -Path $cacheRoot -Force | Out-Null
-        if (-not (Test-Path -LiteralPath $archivePath)) {
-            $normalizedId = $Id.ToLowerInvariant()
-            $uri = "https://api.nuget.org/v3-flatcontainer/$normalizedId/$Version/$normalizedId.$Version.nupkg"
-            Invoke-WebRequest -Uri $uri -OutFile $archivePath
-        }
-
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
-        [System.IO.Compression.ZipFile]::ExtractToDirectory($archivePath, $expandedPath)
-    }
-
-    return $expandedPath
-}
+$outputMsix = Join-Path $outputRoot "Dota Scout Game Bar Widget Test.msix"
+$msbuild = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
+$signTool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe"
 
 function New-BadgeAsset {
     param(
@@ -66,15 +45,13 @@ function New-BadgeAsset {
     $bitmap.Dispose()
 }
 
-if (-not (Test-Path -LiteralPath $compiler)) {
-    throw "Inbox C# compiler not found: $compiler"
+if (-not (Test-Path -LiteralPath $msbuild)) {
+    throw "Visual Studio Build Tools with the UWP workload was not found: $msbuild"
 }
 
-$gameBar = Get-NuGetPackage -Id "Microsoft.Gaming.XboxGameBar" -Version "7.2.240903001"
-$uwpRefs = Get-NuGetPackage -Id "Microsoft.NETCore.UniversalWindowsPlatform" -Version "6.2.9"
-$contracts = Get-NuGetPackage -Id "Microsoft.Windows.SDK.Contracts" -Version "10.0.26100.1"
-$buildTools = Get-NuGetPackage -Id "Microsoft.Windows.SDK.BuildTools" -Version "10.0.26100.1"
-$coreRuntime = Get-NuGetPackage -Id "runtime.win10-x64.Microsoft.Net.UWPCoreRuntimeSdk" -Version "2.2.9"
+if (-not (Test-Path -LiteralPath $projectFile)) {
+    throw "Game Bar Widget project was not found: $projectFile"
+}
 
 $resolvedProjectRoot = [System.IO.Path]::GetFullPath($projectRoot).TrimEnd('\')
 $resolvedBuildRoot = [System.IO.Path]::GetFullPath($buildRoot)
@@ -85,72 +62,74 @@ if (-not $resolvedBuildRoot.StartsWith($resolvedProjectRoot + "\", [System.Strin
 if (Test-Path -LiteralPath $buildRoot) {
     Remove-Item -LiteralPath $buildRoot -Recurse -Force
 }
-New-Item -ItemType Directory -Path $layoutRoot -Force | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $layoutRoot "Assets") -Force | Out-Null
+
+New-Item -ItemType Directory -Path $assetRoot -Force | Out-Null
+New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
+New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $dependencyRoot -Force | Out-Null
 
-$refRoot = Join-Path $uwpRefs "ref\uap10.0.15138"
-$contractRoot = Join-Path $contracts "ref\netstandard2.0"
-$gameBarWinmd = Join-Path $gameBar "lib\uap10.0\Microsoft.Gaming.XboxGameBar.winmd"
-$outputExe = Join-Path $layoutRoot "DotaScoutGameBarWidget.exe"
-
-$compilerArguments = @(
-    "/nologo",
-    "/noconfig",
-    "/nostdlib+",
-    "/target:appcontainerexe",
-    "/platform:x64",
-    "/subsystemversion:6.02",
-    "/out:$outputExe",
-    "/reference:$(Join-Path $refRoot 'mscorlib.dll')",
-    "/reference:$(Join-Path $refRoot 'System.Runtime.dll')",
-    "/reference:$(Join-Path $refRoot 'System.ObjectModel.dll')",
-    "/reference:$(Join-Path $refRoot 'System.Collections.dll')",
-    "/reference:$(Join-Path $refRoot 'System.Runtime.WindowsRuntime.dll')",
-    "/reference:$(Join-Path $refRoot 'System.Runtime.WindowsRuntime.UI.Xaml.dll')",
-    "/reference:$(Join-Path $contractRoot 'Windows.WinMD')",
-    "/reference:$(Join-Path $contractRoot 'Windows.Foundation.FoundationContract.winmd')",
-    "/reference:$(Join-Path $contractRoot 'Windows.Foundation.UniversalApiContract.winmd')",
-    "/reference:$gameBarWinmd",
-    (Join-Path $sourceRoot "Program.cs")
-)
-
-& $compiler @compilerArguments
-if ($LASTEXITCODE -ne 0) {
-    throw "Game Bar Widget compilation failed with exit code $LASTEXITCODE"
-}
-
-Copy-Item (Join-Path $sourceRoot "AppxManifest.xml") $layoutRoot -Force
-Copy-Item $gameBarWinmd $layoutRoot -Force
-Copy-Item (Join-Path $gameBar "private\Microsoft.Gaming.XboxGameBar.Private.winmd") $layoutRoot -Force
-Copy-Item (Join-Path $gameBar "runtimes\win10-x64\native\Microsoft.Gaming.XboxGameBar.dll") $layoutRoot -Force
-Copy-Item (Join-Path $gameBar "runtimes\win10-x64\native\Microsoft.Gaming.XboxGameBar.pri") $layoutRoot -Force
-
-$assetRoot = Join-Path $layoutRoot "Assets"
 New-BadgeAsset -Path (Join-Path $assetRoot "StoreLogo.png") -Size 50
 New-BadgeAsset -Path (Join-Path $assetRoot "Square44x44Logo.png") -Size 44
 New-BadgeAsset -Path (Join-Path $assetRoot "Square150x150Logo.png") -Size 150
 
-$makeAppx = Join-Path $buildTools "bin\10.0.26100.0\x64\makeappx.exe"
-$signTool = Join-Path $buildTools "bin\10.0.26100.0\x64\signtool.exe"
-$outputMsix = Join-Path $outputRoot "Dota Scout Game Bar Widget Test.msix"
+$msbuildArguments = @(
+    $projectFile,
+    "/restore",
+    "/t:Rebuild",
+    "/m",
+    "/p:Configuration=Debug",
+    "/p:Platform=x64",
+    "/p:GameBarAssetRoot=$assetRoot",
+    "/p:RestorePackagesPath=$nugetRoot",
+    "/p:GenerateAppxPackageOnBuild=true",
+    "/p:AppxPackageDir=$packageRoot\",
+    "/p:AppxBundle=Never",
+    "/p:UapAppxPackageBuildMode=SideloadOnly",
+    "/p:AppxPackageSigningEnabled=$([bool]$SigningThumbprint)"
+)
 
-New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
-& $makeAppx pack /d $layoutRoot /p $outputMsix /o
+if ($SigningThumbprint) {
+    $msbuildArguments += "/p:PackageCertificateThumbprint=$($SigningThumbprint.Replace(' ', ''))"
+}
+
+& $msbuild @msbuildArguments
 if ($LASTEXITCODE -ne 0) {
-    throw "MSIX packaging failed with exit code $LASTEXITCODE"
+    throw "Game Bar Widget MSBuild failed with exit code $LASTEXITCODE"
+}
+
+$builtPackage = Get-ChildItem -LiteralPath $packageRoot -File -Recurse |
+    Where-Object {
+        $_.Extension -in ".appx", ".msix" -and
+        $_.FullName -notmatch "[\\/]Dependencies[\\/]" -and
+        $_.BaseName -like "DotaScout.GameBarWidget_*"
+    } |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+
+if (-not $builtPackage) {
+    throw "MSBuild completed but did not produce an APPX package under $packageRoot"
+}
+
+Copy-Item -LiteralPath $builtPackage.FullName -Destination $outputMsix -Force
+
+$builtDependencies = Get-ChildItem -LiteralPath $packageRoot -Filter "*.appx" -File -Recurse |
+    Where-Object { $_.FullName -match "[\\/]Dependencies[\\/]x64[\\/]" }
+foreach ($dependency in $builtDependencies) {
+    Copy-Item -LiteralPath $dependency.FullName -Destination $dependencyRoot -Force
 }
 
 if ($SigningThumbprint) {
-    & $signTool sign /fd SHA256 /sha1 $SigningThumbprint /s My $outputMsix
+    if (-not (Test-Path -LiteralPath $signTool)) {
+        throw "Windows SDK signtool was not found: $signTool"
+    }
+
+    & $signTool verify /pa $outputMsix
     if ($LASTEXITCODE -ne 0) {
-        throw "MSIX signing failed with exit code $LASTEXITCODE"
+        throw "The generated package did not pass signature verification."
     }
 }
 
-Copy-Item (Join-Path $coreRuntime "tools\Appx\Microsoft.NET.CoreRuntime.2.2.appx") $dependencyRoot -Force
-Copy-Item (Join-Path $coreRuntime "tools\Appx\Microsoft.NET.CoreFramework.Debug.2.2.appx") $dependencyRoot -Force
-
 Write-Output "Game Bar Widget MSIX: $outputMsix"
+Write-Output "Built with standard UWP XAML/MSBuild: True"
 Write-Output "Signed: $([bool]$SigningThumbprint)"
-Write-Output "No Developer Mode or certificate trust settings were changed by this build."
+Write-Output "No certificate trust settings were changed by this build."

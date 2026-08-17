@@ -1,14 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
-  IgnorableNamespaces="uap uap3">
+  IgnorableNamespaces="mp uap uap3">
   <Identity
     Name="DotaScout.GameBarWidget.Poc"
     Publisher="CN=Dota Scout Development"
-    Version="0.1.1.0"
+    Version="0.1.4.0"
     ProcessorArchitecture="x64" />
+  <mp:PhoneIdentity PhoneProductId="f14b75ce-f8d8-4da3-baa0-eaf169ee4de5" PhonePublisherId="00000000-0000-0000-0000-000000000000" />
   <Properties>
     <DisplayName>Dota Scout Game Bar Test</DisplayName>
     <PublisherDisplayName>Dota Scout Development</PublisherDisplayName>
@@ -31,7 +33,7 @@
   <Applications>
     <Application
       Id="App"
-      Executable="DotaScoutGameBarWidget.exe"
+      Executable="$targetnametoken$.exe"
       EntryPoint="DotaScout.GameBarWidget.App">
       <uap:VisualElements
         DisplayName="Dota Scout Game Bar Test"
