@@ -1,0 +1,64 @@
+{
+  "name": "dota-scout",
+  "productName": "Dota Scout",
+  "private": true,
+  "version": "0.3.0",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "desktop:dev": "pnpm build && electron .",
+    "build:helper": "node scripts/build-win32-helper.mjs",
+    "desktop:package": "pnpm build:helper && pnpm build && electron-builder --win portable --publish never && node scripts/place-windows-exe.mjs",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "get-windows": "9.3.0",
+    "react": "latest",
+    "react-dom": "latest",
+    "tesseract.js": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "electron": "latest",
+    "electron-builder": "latest",
+    "typescript": "latest",
+    "vite": "latest",
+    "vitest": "latest"
+  },
+  "build": {
+    "appId": "com.dota-scout.desktop",
+    "productName": "Dota Scout",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/get-windows/**/*",
+      "native/**/*"
+    ],
+    "npmRebuild": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "native/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Dota Scout.exe"
+    }
+  }
+}

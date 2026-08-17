@@ -1,0 +1,17 @@
+{
+  "name": "Dota Scout",
+  "short_name": "Scout",
+  "description": "Public-match Player DNA for Dota 2.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080b10",
+  "theme_color": "#080b10",
+  "icons": [
+    {
+      "src": "/scout-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+Dota Scout V0.1 使用说明
+==========================
+
+1. 双击同一目录里的 “Dota Scout.exe”。
+2. 输入 Dota 好友 ID 或 17 位 Steam ID。
+3. 点击“开始扫描”。
+
+不需要安装 Node.js、npm 或 pnpm，也不需要打开 PowerShell。
+程序已经打开时再次双击，不会创建第二个窗口。
+
+注意：
+- Dota Scout 需要联网读取 OpenDota 的公开比赛数据。
+- 当前 V0.1 没有商业代码签名证书，Windows 可能显示 SmartScreen 提示。
+- 如果程序启动失败，会显示中文错误提示；详细日志位于：
+  %APPDATA%\Dota Scout\dota-scout.log

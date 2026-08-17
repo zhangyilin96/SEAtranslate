@@ -1,0 +1,17 @@
+node_modules/
+dist/
+release/
+outputs/
+Dota Scout.exe
+native/**/*.exe
+native/native-overlay-poc/packages/
+*.pdb
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.vite/
+coverage/
+work/
+*.tsbuildinfo
