@@ -56,7 +56,7 @@ export function LiveTranslate() {
           <span className={worker.running ? 'ready' : ''}><b>03</b>后台翻译<strong>{liveOcrEnabled ? (worker.running ? '运行中' : '待机') : '性能测试中暂停'}</strong></span>
         </div>
         {region && <div className="active-region-note"><strong>固定读取区域</strong><span>{region.displayName} · {region.captureWidth}×{region.captureHeight} · X {region.pixelX} · Y {region.pixelY} · W {region.pixelWidth} · H {region.pixelHeight}</span></div>}
-        {worker.running && <div className="active-region-note"><strong>本轮性能</strong><span>Capture {worker.captureMs ?? 0} ms · OCR {worker.ocrMs ?? 0} ms · Translate {worker.translateMs ?? 0} ms</span></div>}
+        {worker.running && <div className="active-region-note"><strong>本轮性能</strong><span>Capture {worker.captureMs ?? 0} ms · OCR {worker.ocrMs ?? 0} ms · Translate {worker.translateMs ?? 0} ms · Probe #{worker.probeCount ?? 0} · OCR #{worker.ocrCount ?? 0} · Lines {worker.candidateCount ?? 0} · Δ {worker.changePercent ?? 0}%</span></div>}
         {toggleError && <div className="translate-error">{toggleError}</div>}
         {worker.lastError && <div className="translate-error">{worker.lastError}</div>}
         <div className="translation-list">

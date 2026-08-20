@@ -1,7 +1,12 @@
 import { lineFingerprint, normalizeOcrLine } from './glossary'
 
 export function normalizeChatLines(text: string) {
-  return text.split(/\r?\n/).map(normalizeOcrLine).filter((line) => line.length >= 2).slice(-10)
+  return text.split(/\r?\n/).map((value) => {
+    const line = normalizeOcrLine(value)
+    const separator = Math.max(line.lastIndexOf(':'), line.lastIndexOf('：'))
+    const message = separator >= 0 ? normalizeOcrLine(line.slice(separator + 1)) : line
+    return message.length >= 2 ? message : line
+  }).filter((line) => line.length >= 2).slice(-10)
 }
 
 function editDistance(left: string, right: string) {

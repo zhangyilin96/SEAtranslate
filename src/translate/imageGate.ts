@@ -22,11 +22,11 @@ export type FrameGateDecision = {
 }
 
 export const DEFAULT_FRAME_GATE_OPTIONS: FrameGateOptions = {
-  stabilityThreshold: 0.025,
-  changeThreshold: 0.06,
+  stabilityThreshold: 0.003,
+  changeThreshold: 0.006,
   requiredStableSamples: 1,
-  heartbeatMs: 12_000,
-  minOcrIntervalMs: 1_200,
+  heartbeatMs: 7_000,
+  minOcrIntervalMs: 2_000,
 }
 
 export function createFrameGateState(): FrameGateState {

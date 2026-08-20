@@ -9,7 +9,8 @@ import { createRegionFingerprint, cropCapture, readSavedRegion, type SavedCaptur
 
 const API_KEY = 'dota-scout:google-translate-key-v1'
 const PROBE_WIDTH = 512
-const PROBE_INTERVAL_MS = 350
+const OCR_CAPTURE_WIDTH = 1920
+const PROBE_INTERVAL_MS = 400
 const BASELINE_TIMEOUT_MS = 1_600
 const IDLE_REPORT_INTERVAL_MS = 3_000
 
@@ -44,6 +45,10 @@ export function TranslateWorker() {
       let primed = false
       let previousCandidates: string[] = []
       let lastIdleReportAt = 0
+      let probeCount = 0
+      let ocrCount = 0
+      let candidateCount = 0
+      let changePercent = 0
       const seenAt = new Map<string, number>()
       report('正在监测聊天区域', true)
 
@@ -53,21 +58,25 @@ export function TranslateWorker() {
         try {
           const probeStartedAt = performance.now()
           const probe = await window.dotaScoutDesktop?.captureScreen({ displayId: saved.displayId, maxWidth: PROBE_WIDTH })
+          probeCount += 1
           captureMs = Math.round(performance.now() - probeStartedAt)
           if (!probe?.ok) throw new Error(probe?.error || '聊天区域截图失败')
           const signature = await createRegionFingerprint(probe.image, saved)
           const decision = evaluateFrame(gate, signature, Date.now())
           gate = decision.state
+          changePercent = Number((decision.ocrDifference * 100).toFixed(2))
           const baselineTimeout = !primed && Date.now() - startedAt >= BASELINE_TIMEOUT_MS
 
           if (decision.trigger || baselineTimeout) {
-            report(decision.reason === 'heartbeat' ? 'OCR 恢复检查' : '检测到聊天变化', true, '', { captureMs })
+            report(decision.reason === 'heartbeat' ? 'OCR 恢复检查' : '检测到聊天变化', true, '', { captureMs, probeCount, ocrCount, candidateCount, changePercent })
             const fullCaptureStartedAt = performance.now()
-            const capture = await window.dotaScoutDesktop?.captureScreen({ displayId: saved.displayId })
+            const capture = await window.dotaScoutDesktop?.captureScreen({ displayId: saved.displayId, maxWidth: OCR_CAPTURE_WIDTH })
             captureMs += Math.round(performance.now() - fullCaptureStartedAt)
             if (!capture?.ok) throw new Error(capture?.error || '聊天区域截图失败')
-            if (capture.width !== saved.captureWidth || capture.height !== saved.captureHeight) {
-              throw new Error(`显示分辨率已变化：已保存 ${saved.captureWidth}×${saved.captureHeight}，当前 ${capture.width}×${capture.height}。请按 Ctrl+Shift+F8 重新选择。`)
+            const savedAspect = saved.captureWidth / saved.captureHeight
+            const currentAspect = capture.width / capture.height
+            if (Math.abs(savedAspect - currentAspect) > 0.02) {
+              throw new Error(`显示比例已变化：已保存 ${saved.captureWidth}×${saved.captureHeight}，当前捕获 ${capture.width}×${capture.height}。请按 Ctrl+Shift+F8 重新选择。`)
             }
 
             const sample = await cropCapture(capture.image, saved)
@@ -76,13 +85,15 @@ export function TranslateWorker() {
             const result = await worker.recognize(sample)
             const ocrMs = Math.round(performance.now() - ocrStartedAt)
             const ocrAt = Date.now()
+            ocrCount += 1
             gate = markFrameOcred(gate, signature, ocrAt)
             const candidates = normalizeChatLines(result.data.text)
+            candidateCount = candidates.length
 
             if (!primed) {
               previousCandidates = candidates
               primed = true
-              report(candidates.length ? `实时翻译已启动 · 基线 ${candidates.length} 行` : '实时翻译已启动', true, '', { captureMs, ocrMs, lastOcrAt: ocrAt })
+              report(candidates.length ? `实时翻译已启动 · 基线 ${candidates.length} 行 · OCR #${ocrCount}` : `实时翻译已启动 · OCR #${ocrCount}`, true, '', { captureMs, ocrMs, lastOcrAt: ocrAt, probeCount, ocrCount, candidateCount, changePercent })
             } else {
               const appended = diffNewChatLines(previousCandidates, candidates)
               previousCandidates = candidates
@@ -107,12 +118,12 @@ export function TranslateWorker() {
                 await window.dotaScoutDesktop?.publishGameBarTranslations(lines.current)
               }
 
-              const status = fresh.length ? `翻译完成 · 新消息 ${fresh.length} 条` : candidates.length ? '实时翻译中 · 无新消息' : '实时翻译中 · 等待聊天'
-              report(status, true, '', { captureMs, ocrMs, translateMs, lastOcrAt: ocrAt })
+              const status = fresh.length ? `翻译完成 · 新消息 ${fresh.length} 条 · OCR #${ocrCount}` : candidates.length ? `实时翻译中 · 识别 ${candidates.length} 行 · OCR #${ocrCount}` : `实时翻译中 · 等待聊天 · OCR #${ocrCount}`
+              report(status, true, '', { captureMs, ocrMs, translateMs, lastOcrAt: ocrAt, probeCount, ocrCount, candidateCount, changePercent })
             }
           } else if (Date.now() - lastIdleReportAt >= IDLE_REPORT_INTERVAL_MS) {
             lastIdleReportAt = Date.now()
-            report('实时翻译中 · 轻量监测', true, '', { captureMs })
+            report('实时翻译中 · 轻量监测', true, '', { captureMs, probeCount, ocrCount, candidateCount, changePercent })
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : '实时翻译失败'

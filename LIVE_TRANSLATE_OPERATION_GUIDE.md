@@ -24,5 +24,6 @@ Game Bar 的 Click-through 开启时无法拖动 Widget。需要改位置时，�
 - 从新聊天出现到中文显示的大致秒数。
 - 开启实时翻译后鼠标是否仍然流畅。
 - 如失败，记下 LIVE TRANSLATE 页面的 Capture / OCR / Translate 耗时和红色错误文字。
+- 修复版还会显示 `Probe #`、`OCR #`、`Lines` 和 `Δ`。至少发送一条新聊天后等待 8 秒，再切回控制页截图；`OCR #` 应从 1 增加。
 
 出现明显卡顿时，立即在 LIVE TRANSLATE 页面点击 `暂停实时翻译`。该操作会关闭 OCR 工作窗口，但不会修改 Dota，也不会向 `dota2.exe` 加载任何模块。

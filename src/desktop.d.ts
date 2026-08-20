@@ -50,7 +50,7 @@ export type HotkeyDiagnostic = {
   lastEvent: null | { action: HotkeyAction; accelerator: string; at: string; phase: HotkeyPhase; context: 'desktop' | 'dotaForeground'; dotaForeground: boolean; count: number }
 }
 export type CompanionState = { ok: true; dotaRunning: boolean; dotaForeground: boolean; overlayVisible: boolean; overlaySuppressed: boolean; settings: OverlaySettings; shortcuts: Record<string, boolean>; liveOcrEnabled: boolean; overlayVerification: OverlayVerification; hotkeyDiagnostic: HotkeyDiagnostic }
-export type WorkerState = { configured: boolean; running: boolean; status: string; lastScanAt?: number; lastOcrAt?: number; captureMs?: number; ocrMs?: number; translateMs?: number; lastError?: string }
+export type WorkerState = { configured: boolean; running: boolean; status: string; lastScanAt?: number; lastOcrAt?: number; captureMs?: number; ocrMs?: number; translateMs?: number; probeCount?: number; ocrCount?: number; candidateCount?: number; changePercent?: number; lastError?: string }
 export type GameBarLine = { language: string; text: string }
 export type GameBarWidgetState = { type: 'state'; version: 1; sequence: number; sentAt: number; visible: boolean; opacity: number; lines: GameBarLine[] }
 export type GameBarBridgeStatus = {

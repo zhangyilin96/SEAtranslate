@@ -13,16 +13,27 @@ describe('OCR image gate', () => {
 
   it('ignores unchanged frames and triggers after a stable meaningful change', () => {
     let state = markFrameOcred(createFrameGateState(), frame(0, 0, 0, 0), 1_000)
-    const changed = evaluateFrame(state, frame(255, 0, 0, 0), 2_500)
+    const changed = evaluateFrame(state, frame(255, 0, 0, 0), 3_100)
     expect(changed.trigger).toBe(false)
-    const stable = evaluateFrame(changed.state, frame(255, 0, 0, 0), 2_850)
+    const stable = evaluateFrame(changed.state, frame(255, 0, 0, 0), 3_500)
     expect(stable).toMatchObject({ trigger: true, reason: 'changed' })
   })
 
   it('uses a slow heartbeat to recover from a missed threshold', () => {
     const state = markFrameOcred(createFrameGateState(), frame(0, 0), 1_000)
-    const decision = evaluateFrame(state, frame(0, 255), 13_100)
+    const decision = evaluateFrame(state, frame(0, 255), 8_100)
     expect(decision).toMatchObject({ trigger: true, reason: 'heartbeat' })
     expect(signatureDifference(frame(0, 0), frame(0, 255))).toBe(0.5)
+  })
+
+  it('detects a small chat-line change inside a large region', () => {
+    const baseline = frame(...Array.from({ length: 128 }, () => 0))
+    const changedFrame = baseline.slice()
+    changedFrame[63] = 255
+    let state = markFrameOcred(createFrameGateState(), baseline, 1_000)
+    const changed = evaluateFrame(state, changedFrame, 3_100)
+    expect(changed.trigger).toBe(false)
+    const stable = evaluateFrame(changed.state, changedFrame, 3_500)
+    expect(stable).toMatchObject({ trigger: true, reason: 'changed' })
   })
 })

@@ -109,6 +109,7 @@ let overlayDiagnosticUpdatedAt = new Date().toISOString()
 let startupErrorShown = false
 let heroMetadataCache = null
 let translationCache = new Map()
+let lastLoggedWorkerOcrCount = -1
 let overlayPayload = { reports: [], translations: [], diagnostic: false, configured: false, engineStatus: '等待 Dota 2', dotaForeground: false }
 let overlaySettings = { opacity: 0.9, position: 'top-right', fontSize: 15, collapseDelay: 6500, showOriginal: false }
 let hotkeyDiagnostic = {
@@ -1041,6 +1042,11 @@ function registerApiHandler() {
   ipcMain.handle('companion:worker-state', (_event, state) => {
     overlayPayload.configured = Boolean(state?.configured)
     overlayPayload.engineStatus = String(state?.status || (state?.configured ? 'OCR READY' : '聊天翻译未配置'))
+    const ocrCount = Number(state?.ocrCount)
+    if (state?.lastError || (Number.isFinite(ocrCount) && ocrCount !== lastLoggedWorkerOcrCount)) {
+      if (Number.isFinite(ocrCount)) lastLoggedWorkerOcrCount = ocrCount
+      log(`LIVE_TRANSLATE_STATE status=${JSON.stringify(overlayPayload.engineStatus)} probe=${Number(state?.probeCount) || 0} ocr=${Number.isFinite(ocrCount) ? ocrCount : 0} lines=${Number(state?.candidateCount) || 0} change=${Number(state?.changePercent) || 0} captureMs=${Number(state?.captureMs) || 0} ocrMs=${Number(state?.ocrMs) || 0} translateMs=${Number(state?.translateMs) || 0} error=${JSON.stringify(String(state?.lastError || ''))}`)
+    }
     overlayWindow?.webContents.send('overlay:payload', overlayPayload)
     mainWindow?.webContents.send('companion:worker-state', state)
     if (state?.lastError) log(`翻译工作窗口错误: ${state.lastError}`)

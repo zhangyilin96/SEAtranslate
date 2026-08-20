@@ -21,4 +21,8 @@ describe('ordered chat line diff', () => {
   it('normalizes OCR output into a bounded ordered list', () => {
     expect(normalizeChatLines('  | smoke  rosh!!\n\n go mid ')).toEqual(['I smoke rosh!!', 'go mid'])
   })
+
+  it('removes the OCR player prefix before translating a Dota chat line', () => {
+    expect(normalizeChatLines('[ALLY] Kiseki [Tag] : back\n[ALLY] Kiseki [Tag]: gogogo')).toEqual(['back', 'gogogo'])
+  })
 })
