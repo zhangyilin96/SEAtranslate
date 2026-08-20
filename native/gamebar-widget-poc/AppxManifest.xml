@@ -8,7 +8,7 @@
   <Identity
     Name="DotaScout.GameBarWidget.Poc"
     Publisher="CN=Dota Scout Development"
-    Version="0.2.0.0"
+    Version="0.2.1.0"
     ProcessorArchitecture="x64" />
   <mp:PhoneIdentity PhoneProductId="f14b75ce-f8d8-4da3-baa0-eaf169ee4de5" PhonePublisherId="00000000-0000-0000-0000-000000000000" />
   <Properties>

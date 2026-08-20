@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
 using System.Security.AccessControl;
@@ -7,6 +8,7 @@ using System.Security.Principal;
 using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
+using System.Runtime.InteropServices;
 
 internal sealed class BridgeLine
 {
@@ -28,6 +30,8 @@ internal sealed class BridgeState
 internal sealed class GameBarBridge : IDisposable
 {
     public const string PipeName = "LOCAL\\DotaScout.GameBarWidget.v1";
+    private const string PipeLeafName = "DotaScout.GameBarWidget.v1";
+    private const string WidgetPackageFamilyName = "DotaScout.GameBarWidget.Poc_x1vqwb1368zjj";
 
     private readonly object sync = new object();
     private readonly JavaScriptSerializer json = new JavaScriptSerializer { MaxJsonLength = 16384 };
@@ -174,8 +178,9 @@ internal sealed class GameBarBridge : IDisposable
         security.AddAccessRule(new PipeAccessRule(WindowsIdentity.GetCurrent().User, PipeAccessRights.FullControl, AccessControlType.Allow));
         security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null), readWrite, AccessControlType.Allow));
         security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier("S-1-15-2-1"), readWrite, AccessControlType.Allow));
+        security.AddAccessRule(new PipeAccessRule(DeriveWidgetPackageSid(), readWrite, AccessControlType.Allow));
         return new NamedPipeServerStream(
-            PipeName,
+            GetWidgetServerPipeName(),
             PipeDirection.InOut,
             1,
             PipeTransmissionMode.Byte,
@@ -184,6 +189,59 @@ internal sealed class GameBarBridge : IDisposable
             16384,
             security);
     }
+
+    private static SecurityIdentifier DeriveWidgetPackageSid()
+    {
+        IntPtr sid;
+        var result = DeriveAppContainerSidFromAppContainerName(WidgetPackageFamilyName, out sid);
+        if (result != 0 || sid == IntPtr.Zero)
+            throw new InvalidOperationException("Unable to derive the Game Bar Widget package SID (HRESULT 0x" + result.ToString("X8") + ").");
+        try
+        {
+            return new SecurityIdentifier(sid);
+        }
+        finally
+        {
+            FreeSid(sid);
+        }
+    }
+
+    public static string GetWidgetServerPipeName()
+    {
+        IntPtr sid;
+        var result = DeriveAppContainerSidFromAppContainerName(WidgetPackageFamilyName, out sid);
+        if (result != 0 || sid == IntPtr.Zero)
+            throw new InvalidOperationException("Unable to derive the Game Bar Widget package SID (HRESULT 0x" + result.ToString("X8") + ").");
+        try
+        {
+            uint required;
+            GetAppContainerNamedObjectPath(IntPtr.Zero, sid, 0, null, out required);
+            if (required == 0) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            var path = new StringBuilder((int)required);
+            if (!GetAppContainerNamedObjectPath(IntPtr.Zero, sid, required, path, out required))
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            return "Sessions\\" + Process.GetCurrentProcess().SessionId + "\\" + path + "\\" + PipeLeafName;
+        }
+        finally
+        {
+            FreeSid(sid);
+        }
+    }
+
+    [DllImport("userenv.dll", CharSet = CharSet.Unicode)]
+    private static extern int DeriveAppContainerSidFromAppContainerName(string appContainerName, out IntPtr sid);
+
+    [DllImport("advapi32.dll")]
+    private static extern IntPtr FreeSid(IntPtr sid);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetAppContainerNamedObjectPath(
+        IntPtr token,
+        IntPtr appContainerSid,
+        uint objectPathLength,
+        StringBuilder objectPath,
+        out uint returnLength);
 
     private void Send(BridgeState state)
     {
@@ -271,7 +329,7 @@ internal static class Program
             var client = new Thread(() => {
                 try
                 {
-                    using (var pipe = new NamedPipeClientStream(".", GameBarBridge.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous))
+                    using (var pipe = new NamedPipeClientStream(".", GameBarBridge.GetWidgetServerPipeName(), PipeDirection.InOut, PipeOptions.Asynchronous))
                     {
                         pipe.Connect(3000);
                         var reader = new StreamReader(pipe, Encoding.UTF8, false, 4096, true);
@@ -307,6 +365,8 @@ internal static class Program
 
     public static int Main(string[] args)
     {
+        Console.InputEncoding = new UTF8Encoding(false);
+        Console.OutputEncoding = new UTF8Encoding(false);
         if (args.Length == 1 && args[0] == "--self-test") return SelfTest();
 
         using (var bridge = new GameBarBridge(Output))

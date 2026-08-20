@@ -22,6 +22,7 @@ namespace DotaScout.GameBarWidget
         private CancellationTokenSource bridgeCancellation;
         private XboxGameBarWidget widget;
         private StreamWriter pipeWriter;
+        private string bridgeError;
         private bool desktopVisible = true;
         private double desktopOpacity = 0.9;
         private long lastSequence;
@@ -94,6 +95,7 @@ namespace DotaScout.GameBarWidget
                         using (var writer = new StreamWriter(pipe, new UTF8Encoding(false), 4096, true) { AutoFlush = true })
                         {
                             pipeWriter = writer;
+                            bridgeError = null;
                             await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => UpdateConnectionLabel(true));
                             await SendAsync(BuildStatus("widget-status"));
 
@@ -106,9 +108,9 @@ namespace DotaScout.GameBarWidget
                         }
                     }
                 }
-                catch (Exception)
+                catch (Exception exception)
                 {
-                    // The desktop bridge may start after the pinned widget. Reconnect quietly.
+                    bridgeError = "IPC 0x" + exception.HResult.ToString("X8") + " · " + exception.Message;
                 }
                 finally
                 {
@@ -220,7 +222,7 @@ namespace DotaScout.GameBarWidget
         {
             if (!connected)
             {
-                ConnectionText.Text = "WAITING FOR DESKTOP";
+                ConnectionText.Text = bridgeError ?? "WAITING FOR DESKTOP";
                 return;
             }
             var pin = widget != null && widget.Pinned ? "PINNED" : "NOT PINNED";

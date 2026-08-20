@@ -23,8 +23,11 @@ click-through, visibility, opacity, display-mode, and window-state metadata.
 
 This follows Microsoft's documented Game Bar communication model for an
 unpackaged Win32 desktop process. The pipe ACL grants the current Desktop user,
-the Windows app-package group, and the access required by AppContainer clients.
-It does not accept commands, file paths, scripts, OCR images, or Dota state.
+the Windows app-package group, and the widget's exact package SID. On current
+Windows builds, the bridge resolves the widget's AppContainer named-object path
+before creating the server while the widget continues to use the logical
+`LOCAL\DotaScout.GameBarWidget.v1` name. Both directions use UTF-8. The bridge
+does not accept commands, file paths, scripts, OCR images, or Dota state.
 
 Scope boundaries:
 
@@ -42,4 +45,7 @@ executable.
 
 Local installation requires either Windows Developer Mode or an MSIX code
 signing certificate trusted by Windows. The build script does not modify the
-Windows trust store or enable Developer Mode.
+Windows trust store or enable Developer Mode. For a signed local test package,
+`scripts/install-gamebar-widget-test-package.ps1` validates the exact temporary
+signer and expected package family, installs the package, and removes that
+certificate from the machine trust stores in the same elevated transaction.
