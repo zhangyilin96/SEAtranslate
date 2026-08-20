@@ -9,6 +9,7 @@ export function LiveTranslate() {
   const [worker, setWorker] = useState<WorkerState>({ configured: Boolean(region), running: false, status: region ? 'OCR READY' : '聊天翻译未配置' })
   const [lines, setLines] = useState<TranslationLine[]>([])
   const [foreground, setForeground] = useState(false)
+  const [liveOcrEnabled, setLiveOcrEnabled] = useState(false)
   const [apiKey, setApiKey] = useState(() => localStorage.getItem(API_KEY) || '')
   const [overlayNote, setOverlayNote] = useState('用户最新实测为游戏内不可见；当前正在独立诊断 Overlay。')
   const [gameBar, setGameBar] = useState<GameBarBridgeResult | null>(null)
@@ -22,6 +23,7 @@ export function LiveTranslate() {
     void window.dotaScoutDesktop?.getOverlayState().then((state) => state.ok && setLines(state.payload.translations))
     void window.dotaScoutDesktop?.getCompanionState().then((state) => {
       setForeground(state.dotaForeground)
+      setLiveOcrEnabled(state.liveOcrEnabled)
       setOverlayNote(state.overlayVerification.note)
     })
     void window.dotaScoutDesktop?.getGameBarState().then(setGameBar)
@@ -30,18 +32,18 @@ export function LiveTranslate() {
 
   return (
     <div className="translate-page">
-      <header className="page-header"><div><span className="overline">LIVE TRANSLATE / BACKGROUND COMPANION</span><h1>进游戏就开始听。</h1><p>控制面板不需要保持打开。Dota 进入前台后，后台引擎自动读取已保存的固定聊天区域。</p></div></header>
+      <header className="page-header"><div><span className="overline">LIVE TRANSLATE / BACKGROUND COMPANION</span><h1>{liveOcrEnabled ? '进游戏就开始听。' : '先保证游戏流畅。'}</h1><p>{liveOcrEnabled ? '控制面板不需要保持打开。Dota 进入前台后，后台引擎自动读取已保存的固定聊天区域。' : '当前是 Game Bar IPC 性能验证阶段；自动截图和 OCR 已暂停，不会在游戏前台周期运行。'}</p></div></header>
       <section className="translate-console">
         <div className="overlay-verification"><strong>游戏内 Overlay：诊断中 / 未通过</strong><p>{overlayNote}</p><span>热键已经 PASS；本阶段只检查 Window / Z-order / Focus / Click-through。</span></div>
         <div className="translate-controls">
-          <span className={`status-pill ${worker.running ? 'active' : ''}`}>{worker.status}</span>
+          <span className={`status-pill ${worker.running ? 'active' : ''}`}>{liveOcrEnabled ? worker.status : 'OCR 自动运行已暂停'}</span>
           <button className="ghost-button" onClick={() => void window.dotaScoutDesktop?.openRegionSelector()}>{region ? 'Ctrl+Shift+F8 重新选择' : 'Ctrl+Shift+F8 设置区域'}</button>
           <button className="primary-button" onClick={() => void window.dotaScoutDesktop?.toggleOverlay()}>Ctrl+Shift+F7 显示 / 隐藏</button>
         </div>
         <div className="companion-readiness">
           <span className={foreground ? 'ready' : ''}><b>01</b>Dota 前台<strong>{foreground ? '已检测' : '等待中'}</strong></span>
           <span className={region ? 'ready' : ''}><b>02</b>固定 OCR 区域<strong>{region ? '已保存' : '未配置'}</strong></span>
-          <span className={worker.running ? 'ready' : ''}><b>03</b>后台翻译<strong>{worker.running ? '运行中' : '待机'}</strong></span>
+          <span className={worker.running ? 'ready' : ''}><b>03</b>后台翻译<strong>{liveOcrEnabled ? (worker.running ? '运行中' : '待机') : '性能测试中暂停'}</strong></span>
         </div>
         {region && <div className="active-region-note"><strong>固定读取区域</strong><span>{region.displayName} · {region.captureWidth}×{region.captureHeight} · X {region.pixelX} · Y {region.pixelY} · W {region.pixelWidth} · H {region.pixelHeight}</span></div>}
         {worker.lastError && <div className="translate-error">{worker.lastError}</div>}

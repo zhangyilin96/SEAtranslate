@@ -1,6 +1,6 @@
 # Dota Scout / SEA Translate 项目状态
 
-> 更新：2026-08-17
+> 更新：2026-08-20
 >
 > 当前主线：Dota 2 SEA 实时聊天翻译助手（Live Translate）
 >
@@ -58,15 +58,21 @@ Borderless 路线曾出现透明度、click-through 和鼠标轻微卡顿问题�
 | Dota Windowed visibility | PASS |
 | Dota Borderless visibility | PASS |
 | Dota Exclusive Fullscreen visibility | PASS（captured live evidence） |
-| Exclusive Fullscreen 用户肉眼确认 | WAITING FOR USER TEST |
+| Exclusive Fullscreen 用户肉眼确认 | PASS（2026-08-20 用户实测） |
 | Pinned click-through 默认状态 | FAIL |
 | 开启 Game Bar click-through 后 | PASS |
 | Dota focus while clicking through | PASS |
-| Mouse perceptual stutter / latency | WAITING FOR USER TEST |
+| Mouse perceptual stutter / latency | FAIL（用户实测出现减速与轻微卡顿，2–3 秒恢复） |
 
 自动画面证据与用户肉眼可见是两个独立状态。用户确认前不得写成 Production Ready。完整记录见 `native/gamebar-widget-poc/TEST_RESULTS.md`。
 
 Game Bar Widget 没有注入 Dota、向 `dota2.exe` 加载自有 DLL、Hook Dota、读取 Dota 内存，也没有接入 OCR、翻译或 Match Scout。测试结束后 Dota 已恢复为原始 Borderless Window；临时测试证书指纹已从 CurrentUser 与 LocalMachine 相关证书库删除并核对为零。
+
+### 2026-08-20 性能修复候选
+
+已确认旧 Desktop 在保存 OCR 区域后，会在 Dota 前台自动执行全屏捕获、区域裁剪和四语言 Tesseract OCR，并在每轮结束后等待 1.8 秒；同时 Desktop 曾每 1 秒启动一次 `tasklist.exe`，界面又每 3 秒重复查询进程。这些后台负载与用户报告的周期性卡顿高度吻合。
+
+当前 Game Bar IPC 阶段已做最小隔离：正常启动不再创建实时 OCR 工作窗口，OCR PoC 与手动 OCR 测试代码均保留；Dota 后台进程查询改为缓存结果并最多每 15 秒执行一次，Dota 在前台时直接由前台窗口信息确认。该修复尚待用户在同一 Dota 场景复测，复测前 Game Bar 仍不是 Production Ready。
 
 ## Overlay 技术决策
 

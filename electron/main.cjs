@@ -20,6 +20,10 @@ const GAME_OVERLAY_VERIFICATION = {
   note: '热键已经通过；当前只诊断 Overlay Window、Z-order、焦点与输入穿透，不再用自动截图替代用户肉眼结论。',
 }
 const isSmokeTest = process.argv.includes('--smoke-test')
+// Live OCR is intentionally opt-in while the Game Bar IPC/performance gate is active.
+// This keeps the existing OCR PoC available without running Tesseract during normal play.
+const liveOcrAutostartEnabled = process.env.DOTA_SCOUT_ENABLE_LIVE_OCR === '1'
+const DOTA_PROCESS_POLL_INTERVAL_MS = 15_000
 const liveProbePath = process.env.DOTA_SCOUT_LIVE_PROBE_OUTPUT || ''
 const liveProbeScreenshotPath = process.env.DOTA_SCOUT_LIVE_PROBE_SCREENSHOT || ''
 const MATCH_FIELDS = [
@@ -77,6 +81,7 @@ let activeWindowReader = null
 let liveProbeCompleted = false
 let dotaForeground = false
 let dotaRunning = false
+let lastDotaProcessCheckAt = 0
 let overlaySuppressed = false
 let overlayClickThrough = true
 let overlayDiagnosticScenario = 'desktop'
@@ -707,11 +712,17 @@ async function startForegroundMonitor() {
   }
   const check = async () => {
     try {
-      dotaRunning = await getDotaProcessStatus()
       const active = activeWindowReader ? await activeWindowReader() : null
       const ownerPath = String(active?.owner?.path || '').toLowerCase()
       const ownerName = String(active?.owner?.name || '').toLowerCase()
       const nextForeground = ownerPath.endsWith('dota2.exe') || ownerName === 'dota 2' || ownerName === 'dota2'
+      const now = Date.now()
+      if (nextForeground) {
+        dotaRunning = true
+      } else if (!lastDotaProcessCheckAt || now - lastDotaProcessCheckAt >= DOTA_PROCESS_POLL_INTERVAL_MS) {
+        lastDotaProcessCheckAt = now
+        dotaRunning = await getDotaProcessStatus()
+      }
       if (nextForeground !== dotaForeground) {
         dotaForeground = nextForeground
         overlayPayload.dotaForeground = dotaForeground
@@ -779,7 +790,8 @@ if (!gotSingleInstanceLock) {
     loadSettings()
     registerApiHandler()
     startGameBarBridge()
-    await ensureWorker()
+    if (liveOcrAutostartEnabled || isSmokeTest) await ensureWorker()
+    else log('LIVE_OCR_AUTOSTART_DISABLED reason=GAME_BAR_IPC_PERFORMANCE_GATE')
     await registerCompanionShortcuts()
     createTray()
     await createWindow()
@@ -930,8 +942,7 @@ function registerApiHandler() {
 
   ipcMain.handle('dota:get-status', async () => {
     const installPath = getDotaInstallPath()
-    const isRunning = await getDotaProcessStatus()
-    return { ok: true, installed: Boolean(installPath), installPath, isRunning, isForeground: dotaForeground, identityStatus: 'unavailable' }
+    return { ok: true, installed: Boolean(installPath), installPath, isRunning: dotaRunning, isForeground: dotaForeground, identityStatus: 'unavailable' }
   })
 
   ipcMain.handle('companion:get-state', () => ({
@@ -942,6 +953,7 @@ function registerApiHandler() {
     overlaySuppressed,
     settings: overlaySettings,
     shortcuts: overlayPayload.shortcutStatus || {},
+    liveOcrEnabled: liveOcrAutostartEnabled,
     overlayVerification: GAME_OVERLAY_VERIFICATION,
     hotkeyDiagnostic,
   }))
@@ -973,7 +985,7 @@ function registerApiHandler() {
     selectorWindow?.close()
     selectorWindow = null
     overlayPayload.configured = Boolean(region)
-    overlayPayload.engineStatus = region ? 'OCR READY' : '聊天翻译未配置'
+    overlayPayload.engineStatus = region ? (liveOcrAutostartEnabled ? 'OCR READY' : 'OCR 自动运行已暂停') : '聊天翻译未配置'
     workerWindow?.webContents.send('companion:region-changed', region)
     mainWindow?.webContents.send('companion:region-changed', region)
     overlayWindow?.webContents.send('overlay:payload', overlayPayload)

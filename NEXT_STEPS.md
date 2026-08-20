@@ -2,6 +2,12 @@
 
 > 当前主线：Live Translate。以下步骤必须按顺序执行，不要提前展开新架构或新功能。
 
+## 2026-08-20 当前 Gate
+
+Desktop → Game Bar Widget 最小 IPC 已完成。用户已确认全屏稳定可见、鼠标穿透与 Dota 操作正常，但首次实测出现周期性鼠标减速和 2–3 秒轻微卡顿。
+
+已隔离自动 OCR 与高频进程查询。**当前唯一下一步是使用 `Dota Scout Performance Fix.exe` 在同一全屏场景复测鼠标流畅度。** 复测通过前不开始 OCR，也不把 Game Bar 标记为 Production Ready。
+
 ## STEP 1：用户本人确认 Game Bar
 
 - Exclusive Fullscreen 中肉眼实际可见。
