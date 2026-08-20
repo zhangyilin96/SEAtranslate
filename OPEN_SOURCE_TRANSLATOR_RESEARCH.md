@@ -194,7 +194,9 @@ Use for Dota Scout:
   missed image threshold;
 - expose capture, gate, OCR, translation, and Widget-ack timings separately.
 
-This is a future OCR task. It was not implemented during the current IPC stage.
+This was implemented after the user accepted the Widget host gate. The first
+candidate uses a 512-pixel-wide probe, stability and last-OCR-frame comparison,
+a 12-second recovery heartbeat, and separate capture/OCR/translation timings.
 
 ### 3.5 Deduplication and recent-message memory
 
@@ -317,8 +319,11 @@ Use for Dota Scout:
 
 ## 5. Proposed Dota Scout pipeline boundaries
 
-These are design recommendations for a later, user-approved OCR stage. They are
-not part of the current Desktop-to-Widget implementation.
+These boundaries were used for the user-approved first OCR stage. The initial
+implementation keeps the pure image gate, ordered line differ, TTL deduplicator,
+language labeler, glossary, and Widget snapshot publication independently
+testable. A formal multi-provider interface remains future work and is not
+needed for the first user acceptance pass.
 
 ```text
 CaptureAdapter
@@ -346,7 +351,7 @@ WidgetPublisher
   -> versioned full-state snapshot, latest 3
 ```
 
-Rules for the future implementation:
+Rules retained by the implementation:
 
 - every stage accepts/returns plain data and can be tested without Dota running;
 - cancellation/sequence checks prevent stale OCR or provider results from
@@ -356,10 +361,14 @@ Rules for the future implementation:
 - no stage opens, injects into, hooks, or reads memory from `dota2.exe`;
 - Widget publication remains independent from OCR/provider implementation.
 
-## 6. Recommendation after the IPC stage
+## 6. Implementation status and next recommendation
 
-Do not start OCR implementation yet. The next single task should be a user-run
-acceptance pass of the newly dynamic Widget inside Dota 2, especially exclusive
-fullscreen stability and perceived mouse latency with Game Bar click-through
-enabled. Only after that host gate is accepted should the team define an OCR
-benchmark around the existing capture path and the staged change gate above.
+The Widget host acceptance gate passed, and the user explicitly authorized the
+first real translation implementation. Commit `794bc63` connects the staged
+pipeline to the existing Desktop and Game Bar IPC without adding any Dota DLL,
+hook, injection, or process-memory access.
+
+The next single task is a user-run real-Dota acceptance pass for OCR accuracy,
+translation quality, end-to-end latency, and perceived mouse smoothness while
+live translation is enabled. Do not broaden the OCR implementation or replace
+the provider architecture before that evidence is recorded.

@@ -42,7 +42,7 @@ test. Documentation-based expectations are not treated as test results.
 | Pinned click-through, Game Bar click-through enabled | PASS | After enabling Game Bar's click-through control, the same coordinates were delivered to `dota2.exe`; the underlying Dota UI responded. |
 | Dota focus while clicking through | PASS (automated target test) | Clicks in the widget area were delivered to Dota and did not reopen the Game Bar control layer. |
 | Mouse stutter or latency | PASS AFTER FIX | On 2026-08-20 the user reported that the stutter was gone after Desktop automatic OCR and frequent process polling were isolated from the IPC path. |
-| Three-line content fit | FIX CANDIDATE AWAITING RETEST | User screenshot showed the third line clipped at the 0.2.1.0 lower edge. Version 0.2.2.0 requests a fixed 200-DIP height and uses bounded 34-DIP rows. |
+| Three-line content fit | PASS | Version 0.2.2.0 uses a fixed 200-DIP height and bounded 34-DIP rows; the user confirmed the corrected layout. |
 | Reposition while click-through is active | HOST LIMITATION | Click-through deliberately sends mouse input to Dota, so the widget cannot be dragged in that state. Public Widget API supports resize, bounds inspection, and centering, but not arbitrary X/Y placement. |
 
 ## Safety and restoration
@@ -62,6 +62,7 @@ Xbox Game Bar successfully hosted this minimal Dota Scout overlay in the tested
 Windowed, Borderless, and Exclusive Fullscreen configurations. Click-through
 worked only after Game Bar's click-through mode was enabled. The user has now
 confirmed physical-screen visibility, click-through, and normal Dota operation.
-Perceptual mouse smoothness passed after the Desktop performance isolation fix.
-The remaining gate is the user's visual confirmation that version 0.2.2.0 shows
-all three translation lines without clipping.
+Perceptual mouse smoothness passed after the Desktop performance isolation fix,
+and the user confirmed that version 0.2.2.0 shows all three lines without
+clipping. The Game Bar host gate is accepted; the newly connected live OCR and
+translation pipeline still requires a separate real-Dota user acceptance pass.

@@ -4,9 +4,9 @@
 
 ## 2026-08-20 当前 Gate
 
-Desktop → Game Bar Widget 最小 IPC 已完成。用户已确认全屏稳定可见、鼠标穿透与 Dota 操作正常；隔离自动 OCR 和高频进程查询后，鼠标性能复测通过。
+Desktop → Game Bar Widget 最小 IPC 已完成。用户已确认全屏稳定可见、鼠标穿透、Dota 操作、性能修复和 0.2.2.0 固定三行布局均正常。
 
-用户截图发现第三条消息被底边裁切。**当前唯一下一步是安装并复测 0.2.2.0 Widget 的固定三行布局。** 布局通过后再开始翻译链路，不提前启动 OCR。
+低负载真实翻译第一版已经接入并通过 32 项自动测试。**当前唯一下一步是用户在真实 Dota 中运行 Live Translate 验收**：确认新聊天是否被识别和翻译、端到端延迟，以及开启后鼠标是否仍然流畅。得到结果前不要继续开发 OCR 或更换翻译架构。
 
 ## STEP 1：用户本人确认 Game Bar
 
@@ -32,13 +32,15 @@ Desktop → Game Bar Widget 最小 IPC 已完成。用户已确认全屏稳定�
 
 只验证：实时显示、最近三条、show/hide、opacity、pinned、click-through，以及不影响 Dota focus。
 
-## STEP 3：接入 Live Translate
+## STEP 3：接入 Live Translate（代码完成，待真实验收）
 
 通信链通过后再串联：
 
 `固定聊天区域 Capture → OCR → Text Change Detection → Deduplicate → Language Detection → Dota-specific Translation → Game Bar Widget`
 
 每层保留独立测试与真实输入输出，不用 Mock 结果冒充已完成能力。
+
+当前实现只读取用户框选的屏幕区域，不进入 Dota 进程。首次扫描建立基线；画面稳定变化才触发 OCR；最近三条中文翻译通过已验证 IPC 发布到 Widget。
 
 ## STEP 4：未来的中文输出翻译
 
@@ -58,4 +60,4 @@ Don't fight. BKB in 20s.
 - DX11 Harness Stage B。
 - Native HWND Overlay 产品化优化。
 - Dota In-Process DLL、loader、injector、DXGI/D3D Hook。
-- OCR 与翻译新功能，直到 STEP 1 和 STEP 2 通过。
+- OCR 与翻译扩展功能，直到 STEP 3 真实验收完成。

@@ -1,15 +1,27 @@
-Dota Scout V0.1 使用说明
-==========================
+Dota Scout / SEA Translate 使用说明
+===================================
 
-1. 双击同一目录里的 “Dota Scout.exe”。
-2. 输入 Dota 好友 ID 或 17 位 Steam ID。
-3. 点击“开始扫描”。
+一、启动
+1. 双击 “Dota Scout Live Translate.exe”。
+2. 左侧点击 “LIVE TRANSLATE / 聊天翻译”。
 
-不需要安装 Node.js、npm 或 pnpm，也不需要打开 PowerShell。
-程序已经打开时再次双击，不会创建第二个窗口。
+二、第一次设置
+1. 点击 “Ctrl+Shift+F8 设置区域”。
+2. 把框只套住 Dota 左下角聊天文字区域，不要包含小地图、技能栏或持续动画。
+3. 点击框内或确认按钮保存。
+4. 回到 LIVE TRANSLATE，点击 “开启实时翻译”。
 
-注意：
-- Dota Scout 需要联网读取 OpenDota 的公开比赛数据。
-- 当前 V0.1 没有商业代码签名证书，Windows 可能显示 SmartScreen 提示。
-- 如果程序启动失败，会显示中文错误提示；详细日志位于：
-  %APPDATA%\Dota Scout\dota-scout.log
+三、游戏内显示
+1. 按 Win+G 打开 Xbox Game Bar。
+2. 打开 Dota Scout Widget，拖到合适位置并固定（Pin）。
+3. 位置满意后，再开启 Game Bar 自己的鼠标穿透（Click-through）。
+4. 回到 Dota。新出现的英语、泰语、马来语、印尼语聊天会翻译成简体中文，Widget 只保留最近 3 条。
+
+注意
+- 第一次开启 OCR 可能需要联网下载语言模型，请等待初始化完成。
+- 首次扫描只记录已有聊天，不会翻译旧文字；请等待一条新聊天测试。
+- 开启 Click-through 后不能拖动 Widget。要换位置，先关闭 Click-through，拖好后再打开。
+- 翻译默认走实验性免 Key 在线通道；可在页面底部填写自己的 Google Cloud API Key。
+- 程序只截图你框选的屏幕区域，不读取 Dota 内存，不注入 DLL，不 Hook 游戏。
+- 如出现鼠标卡顿，先在 LIVE TRANSLATE 点击“暂停实时翻译”，并记录页面显示的 Capture / OCR / Translate 耗时。
+- 日志位置：%APPDATA%\Dota Scout\dota-scout.log

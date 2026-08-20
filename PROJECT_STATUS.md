@@ -4,11 +4,11 @@
 >
 > 当前主线：Dota 2 SEA 实时聊天翻译助手（Live Translate）
 >
-> 当前 Overlay 首选候选：Xbox Game Bar Widget，尚未达到 Production Ready
+> 当前 Overlay 主路线：Xbox Game Bar Widget；Host 验收通过，真实翻译链待用户验收
 
 ## 产品方向
 
-最高优先级是 Live Translate。Match Scout、Player DNA、Coach 和玩家评分分析暂时暂停。现阶段不新增功能，先完成 Game Bar 用户实机确认，再决定正式 Overlay Host。
+最高优先级是 Live Translate。Match Scout、Player DNA、Coach 和玩家评分分析暂时暂停。Game Bar Host 的可见性、输入、性能与三行布局 Gate 已通过；当前只验收真实 OCR 翻译链，不扩展其他产品功能。
 
 ## Hotkey 实测
 
@@ -45,7 +45,7 @@ Borderless 路线曾出现透明度、click-through 和鼠标轻微卡顿问题�
 
 ## Xbox Game Bar Widget PoC
 
-测试环境：Windows 11、Dota 2、`DotaScout.GameBarWidget.Poc` 0.1.4.0 x64。Widget 显示 `DOTA SCOUT GAME BAR TEST`。
+测试环境：Windows 11、Dota 2；当前安装 `DotaScout.GameBarWidget.Poc` 0.2.2.0 x64。Widget 显示 `DOTA SCOUT · LIVE TRANSLATE`。
 
 | 检查 | 结果 |
 | --- | --- |
@@ -64,21 +64,29 @@ Borderless 路线曾出现透明度、click-through 和鼠标轻微卡顿问题�
 | Dota focus while clicking through | PASS |
 | Mouse perceptual stutter / latency | PASS（隔离自动 OCR 与高频进程查询后，2026-08-20 用户复测无卡顿） |
 
-自动画面证据与用户肉眼可见是两个独立状态。用户确认前不得写成 Production Ready。完整记录见 `native/gamebar-widget-poc/TEST_RESULTS.md`。
+自动画面证据与用户肉眼可见是两个独立状态。Game Bar Host Gate 已由用户确认；真实翻译链仍未达到 Production Ready。完整记录见 `native/gamebar-widget-poc/TEST_RESULTS.md`。
 
-Game Bar Widget 没有注入 Dota、向 `dota2.exe` 加载自有 DLL、Hook Dota、读取 Dota 内存，也没有接入 OCR、翻译或 Match Scout。测试结束后 Dota 已恢复为原始 Borderless Window；临时测试证书指纹已从 CurrentUser 与 LocalMachine 相关证书库删除并核对为零。
+Game Bar Widget 包本身没有注入 Dota、向 `dota2.exe` 加载自有 DLL、Hook Dota、读取 Dota 内存，也没有运行 OCR、翻译或 Match Scout。OCR 与翻译只在 Desktop 侧运行，再通过已验证 IPC 发布显示状态。测试结束后 Dota 已恢复为原始 Borderless Window；本轮 0.2.2.0 临时测试证书指纹已从 CurrentUser 与 LocalMachine 相关证书库删除并核对为零。CurrentUser 证书库仍有一个更早期开发证书（指纹 `0CDD2F728031AFA85CCF6D9002F2C607FE39B53F`），未获删除授权，因此保持原状并单独记录。
 
-### 2026-08-20 性能修复候选
+### 2026-08-20 性能修复（用户已验证）
 
 已确认旧 Desktop 在保存 OCR 区域后，会在 Dota 前台自动执行全屏捕获、区域裁剪和四语言 Tesseract OCR，并在每轮结束后等待 1.8 秒；同时 Desktop 曾每 1 秒启动一次 `tasklist.exe`，界面又每 3 秒重复查询进程。这些后台负载与用户报告的周期性卡顿高度吻合。
 
 当前 Game Bar IPC 阶段已做最小隔离：正常启动不再创建实时 OCR 工作窗口，OCR PoC 与手动 OCR 测试代码均保留；Dota 后台进程查询改为缓存结果并最多每 15 秒执行一次，Dota 在前台时直接由前台窗口信息确认。用户已在同一 Dota 场景复测并确认鼠标不卡顿。
 
-2026-08-20 用户截图发现第三条消息被 Widget 底边裁切。0.2.2.0 候选将 Widget 高度固定为 200 DIP，并压缩为明确的三行布局，尚待用户更新包后确认。Game Bar 公共 API 不支持任意 X/Y 预设位置；开启 click-through 后不能拖动属于宿主设计，位置调整需在 Game Bar 中临时关闭 click-through 后完成。
+2026-08-20 用户截图发现第三条消息被 Widget 底边裁切。0.2.2.0 将 Widget 高度固定为 200 DIP，并压缩为明确的三行布局；用户随后确认显示正常。Game Bar 公共 API 不支持任意 X/Y 预设位置；开启 click-through 后不能拖动属于宿主设计，位置调整需在 Game Bar 中临时关闭 click-through 后完成。
+
+### 2026-08-20 Live Translate 第一版
+
+真实链路已经接入：固定区域低分辨率探测 → 画面稳定/变化 Gate → 四语言 Tesseract OCR → 有序聊天行差分 → 20 秒 TTL 去重 → 自动语言标签 → 中文翻译与 Dota 术语修正 → Game Bar 最近三条完整状态替换。
+
+正常启动服从用户保存的启停开关。只有 Dota 位于前台且区域已配置时才探测；首次 OCR 只建立基线；无变化时不运行 OCR，另有 12 秒恢复检查。Desktop 页面显示 Capture、OCR 与 Translate 分段耗时。实现提交为 `794bc63`，自动测试 32/32 通过，正式前端构建通过。
+
+当前不能写成真实 Dota 翻译 PASS：仍需用户用真实聊天确认 OCR 准确率、翻译内容、端到端延迟以及开启翻译后的鼠标体感。第一轮验收结束前不继续开发 OCR 新功能。
 
 ## Overlay 技术决策
 
-1. Xbox Game Bar Widget：当前首选候选。
+1. Xbox Game Bar Widget：当前主路线，Host Gate 已通过。
 2. External Native Overlay：fallback / debug / desktop preview。
 3. DX11 Harness：未来技术研究，当前暂停。
 4. In-Process Dota Overlay：冻结，禁止进入 Dota。

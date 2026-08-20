@@ -1543,9 +1543,9 @@ async function runSmokeTest(window) {
     for (let attempt = 0; attempt < 120; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 500))
       ocrCheck = {
-        ocrOk: /Translate ON|本轮/.test(overlayPayload.engineStatus || ''),
+        ocrOk: /实时翻译已启动|实时翻译中|翻译完成/.test(overlayPayload.engineStatus || ''),
         ocrStatus: overlayPayload.engineStatus || '',
-        ocrError: /失败|错误|变化/.test(overlayPayload.engineStatus || '') ? overlayPayload.engineStatus : '',
+        ocrError: /失败|错误|分辨率已变化|无法/.test(overlayPayload.engineStatus || '') ? overlayPayload.engineStatus : '',
       }
       if (ocrCheck.ocrOk || ocrCheck.ocrError) break
     }
