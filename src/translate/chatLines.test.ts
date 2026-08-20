@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { diffNewChatLines, filterTtlDuplicates, isNearDuplicate, normalizeChatLines, rememberObservedChatLines } from './chatLines'
+import { diffChatLines, diffNewChatLines, filterTtlDuplicates, isNearDuplicate, normalizeChatLines, rememberObservedChatLines } from './chatLines'
 
 describe('ordered chat line diff', () => {
   it('emits only appended lines from a scrolling chat window', () => {
     expect(diffNewChatLines(['one', 'two', 'three'], ['two', 'three', 'four'])).toEqual(['four'])
+    expect(diffChatLines(['farm', 'back'], ['back', 'farm'])).toEqual({ lines: ['farm'], orderedAppend: true })
   })
 
   it('suppresses small OCR jitter in existing longer lines', () => {

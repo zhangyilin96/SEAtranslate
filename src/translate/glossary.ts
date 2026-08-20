@@ -1,3 +1,5 @@
+import { applyHeroGlossary, translateHeroCall } from './heroGlossary'
+
 const glossary: Array<[RegExp, string]> = [
   [/\b(?:rosh(?:an)?|rs)\b/gi, '肉山'],
   [/\b(?:buyback|bb)\b/gi, '买活'],
@@ -77,6 +79,9 @@ export function translateDotaCall(source: string) {
   if (exact) return question && /^(?:rs|rosh|roshan)$/i.test(normalized) ? `${exact}${question}` : exact
   if (/^g[go0e]{1,9}$/i.test(normalized) && /[o0]/i.test(normalized)) return '上'.repeat(Math.max(1, Math.min(5, Math.floor(normalized.length / 2))))
   if (/^w(?:8+|ait|a1t|es)$/i.test(normalized)) return '等一下'
+  if (/^(?:need|needto|gonna|gotta)farm$/i.test(normalized)) return '需要刷钱'
+  if (/^(?:gofarm|farmnow)$/i.test(normalized)) return '去刷钱'
+  if (/^(?:we|i)?needtohide$/i.test(normalized)) return normalized.startsWith('we') ? '我们需要躲起来' : '需要躲起来'
   if (/^(?:lets|letus|go|do|take|kill)(?:rs|rosh|roshan)$/i.test(normalized)) return `打肉山${question}`
   const laneCall = /^(push|go|def|defend)(top|mid|bot|bottom)$/i.exec(normalized)
   if (laneCall) {
@@ -86,11 +91,13 @@ export function translateDotaCall(source: string) {
   }
   const bkbTiming = /^bkb(?:in)?(\d{1,3})(?:s|sec|seconds)?$/i.exec(normalized)
   if (bkbTiming) return `BKB还有${bkbTiming[1]}秒${question}`
+  const heroCall = translateHeroCall(source)
+  if (heroCall) return heroCall
   return null
 }
 
 export function applyDotaGlossary(translated: string, source = '') {
-  let output = translated
+  let output = applyHeroGlossary(translated)
   for (const [pattern, replacement] of glossary) {
     if (pattern.test(source) || pattern.test(output)) output = output.replace(pattern, replacement)
     pattern.lastIndex = 0

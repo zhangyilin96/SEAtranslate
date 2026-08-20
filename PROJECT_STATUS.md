@@ -102,6 +102,14 @@ Widget 0.2.4.0 候选另外在页面导航和窗口关闭时主动释放管道�
 
 下一次实测日志在 19:32:02 明确记录 OCR 提取 5 行、3 条新消息完成翻译，而本地管道探针同时确认真实 Widget 在线 1 个，但 Bridge 最新状态仍是空行。这把断点进一步缩小到 Worker 的发布保护：网络翻译执行期间若焦点变化，已完成结果会被整体丢弃。最终候选允许同一 OCR 区域的已完成批次在焦点变化后继续发布，只在应用销毁或重新框选区域时作废；测试 46/46、TypeScript 和 production build 通过。同名便携版已覆盖并重启，重启后探针再次确认真实 Widget 占用 1 个连接、Bridge 可读，等待最后一次真实消息确认。
 
+### 2026-08-20 真实语义与重复指令复测
+
+用户实测确认普通 Provider 会把 `need farm` 直译为“需要农场”，而去重层的 90 秒模糊 TTL 会误拦玩家后来真正再次发送的 `back`。当前候选将“有序聊天滚动匹配出的尾行”视为可信新消息，允许真实重复指令；无序 OCR 碎片仍使用模糊 TTL 防抖。`farm / need farm / farm now`、`back`、`no dam`、`lets rs` 等高频 Dota 意图在联网 Provider 前本地翻译。
+
+英雄词典已独立为 `src/translate/heroGlossary.ts`，覆盖 Valve 当前 127 名英雄的完整英文名，并生成无冲突首字母缩写、补充常见 SEA/Dota 别名。冲突缩写（例如 `ES`、`VS`、`BM`）不会自动猜测，以免把一个英雄稳定翻错成另一个英雄。
+
+当前产品仍不是 Production Ready：截图中的 `y go`、`fk u lc` 等结果说明单帧 OCR 仍会丢字或串字。下一阶段不继续无上限扩词典，唯一任务是建立本地真实聊天样本集，并实现按行位置、置信度和连续 2–3 帧投票的 OCR 共识层；之后用同一批样本对比现有 Tesseract、Windows OCR 和候选轻量本地 OCR 的准确率与延迟。详细顺序见 `NEXT_STEPS.md`。
+
 ## Overlay 技术决策
 
 1. Xbox Game Bar Widget：当前主路线，Host Gate 已通过。

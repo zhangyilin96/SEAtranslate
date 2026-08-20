@@ -37,14 +37,18 @@ export function isNearDuplicate(left: string, right: string) {
 }
 
 export function diffNewChatLines(previous: string[], current: string[]) {
-  if (current.length === 0) return []
+  return diffChatLines(previous, current).lines
+}
+
+export function diffChatLines(previous: string[], current: string[]) {
+  if (current.length === 0) return { lines: [], orderedAppend: false }
   for (let overlap = Math.min(previous.length, current.length); overlap > 0; overlap -= 1) {
     const previousStart = previous.length - overlap
     if (current.slice(0, overlap).every((line, index) => isNearDuplicate(line, previous[previousStart + index]))) {
-      return current.slice(overlap)
+      return { lines: current.slice(overlap), orderedAppend: true }
     }
   }
-  return current.filter((line) => !previous.some((oldLine) => isNearDuplicate(oldLine, line)))
+  return { lines: current.filter((line) => !previous.some((oldLine) => isNearDuplicate(oldLine, line))), orderedAppend: false }
 }
 
 function recentNearDuplicateKey(line: string, seenAt: Map<string, number>, now: number, ttlMs: number) {

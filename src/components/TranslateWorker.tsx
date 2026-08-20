@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { TranslationLine, WorkerState } from '../desktop'
-import { diffNewChatLines, filterTtlDuplicates, rememberObservedChatLines } from '../translate/chatLines'
+import { diffChatLines, filterTtlDuplicates, rememberObservedChatLines } from '../translate/chatLines'
 import { extractChatLinesFromTsv, type OcrChatLine } from '../translate/chatOcr'
 import { applyDotaGlossary, translateDotaCall } from '../translate/glossary'
 import { createFrameGateState, evaluateFrame, markFrameOcred } from '../translate/imageGate'
@@ -117,8 +117,13 @@ export function TranslateWorker() {
               primed = true
               report(candidates.length ? `实时翻译已启动 · 基线 ${candidates.length} 行 · OCR #${ocrCount}` : `实时翻译已启动 · OCR #${ocrCount}`, true, '', { captureMs, ocrMs, lastOcrAt: ocrAt, probeCount, ocrCount, candidateCount, changePercent, recognizedPreview })
             } else {
-              const appended = diffNewChatLines(previousCandidates, currentMessages).slice(-3)
-              const fresh = filterTtlDuplicates(appended, seenAt, ocrAt)
+              const difference = diffChatLines(previousCandidates, currentMessages)
+              const appended = difference.lines.slice(-3)
+              // A matched scrolling overlap proves that the tail is a newly
+              // appended chat row. Allow a player to repeat a real command
+              // such as "back"; TTL remains the fallback for unordered OCR
+              // fragments and baseline rows that disappear/reappear.
+              const fresh = difference.orderedAppend ? appended : filterTtlDuplicates(appended, seenAt, ocrAt)
               if (currentMessages.length) {
                 previousCandidates = currentMessages
                 rememberObservedChatLines(currentMessages, seenAt, ocrAt)
