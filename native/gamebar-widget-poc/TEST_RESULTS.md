@@ -9,6 +9,7 @@ Test host:
 - Initial evidence package: `DotaScout.GameBarWidget.Poc` 0.1.4.0, x64
 - Current layout candidate installed: `DotaScout.GameBarWidget.Poc` 0.2.3.0, x64
 - 0.2.3.0 display candidate: signed MSIX build and upgrade installation PASS; removes visible language tags so each row is only `speaker: translation`. Installation certificate was removed from CurrentUser/LocalMachine My, Root, and TrustedPeople. Live Game Bar content verification is pending user retest.
+- 0.2.4.0 lifecycle candidate: UWP/MSIX build PASS with 0 warnings and 0 errors; it closes an active IPC connection when the Widget page or window closes. It is not installed because Developer Mode is off and no machine-level root-certificate trust was authorized.
 - Widget content: `DOTA SCOUT GAME BAR TEST`
 
 These results separate captured live evidence from perceptual user testing. A
@@ -44,6 +45,7 @@ test. Documentation-based expectations are not treated as test results.
 | Dota focus while clicking through | PASS (automated target test) | Clicks in the widget area were delivered to Dota and did not reopen the Game Bar control layer. |
 | Mouse stutter or latency | PASS AFTER FIX | On 2026-08-20 the user reported that the stutter was gone after Desktop automatic OCR and frequent process polling were isolated from the IPC path. |
 | Three-line content fit | PASS | Version 0.2.2.0 uses a fixed 200-DIP height and bounded 34-DIP rows; the user confirmed the corrected layout. |
+| Multiple Widget IPC clients | PASS | The repaired Desktop Bridge accepted two simultaneous self-test clients, broadcast the same state to both, and received both acknowledgements. Full capacity waits without a CPU spin; eight simultaneous disconnects were followed by a successful recovery connection. With Game Bar reopened, one real Widget connection plus seven temporary diagnostic clients occupied all eight slots; all diagnostic clients were released and the Bridge remained alive. |
 | Reposition while click-through is active | HOST LIMITATION | Click-through deliberately sends mouse input to Dota, so the widget cannot be dragged in that state. Public Widget API supports resize, bounds inspection, and centering, but not arbitrary X/Y placement. |
 
 ## Safety and restoration

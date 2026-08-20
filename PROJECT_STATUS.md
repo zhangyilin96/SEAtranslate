@@ -94,6 +94,10 @@ Game Bar Widget 包本身没有注入 Dota、向 `dota2.exe` 加载自有 DLL、
 
 第二轮实测确认 `back` 可正确显示，但仍出现 `AT: 大的`、单个泰文字母假昵称、`gogogo` 重复语义丢失和 2–4 秒级处理延迟。新候选不再假设昵称只能是蓝色，而是优先按冒号结构切分昵称与消息，并以多种 Dota 玩家颜色辅助；丢弃过短假昵称，并用同批行的重复昵称纠正 `Iaseki → Kiseki`。OCR 主路径只加载英语字形，泰文模型在主路径无有效聊天时按需回退；MS/ID 在 OCR 后、翻译前由词汇信号判断，明确语言会传给 Provider。网络消息并行翻译，`go/gogo/gogogo` 分别本地输出 `上/上上/上上上`，`back/rs?/cant` 也不访问网络。Widget 0.2.3.0 隐藏语言标签，只显示 `Kiseki: 上上上`；签名安装已完成，安装用临时证书指纹 `D4A4B8DD857B6B30131E48C45AD2E8D671FA4165` 已从 CurrentUser/LocalMachine 的 My、Root、TrustedPeople 复查为零。用户最新 4K 截图已离线通过说话人与 `gogogo/back/rs?/cant` 尾部提取验证；46 项常驻自动测试与 production build 通过，真实 Dota 仍待复测。
 
+随后用户截图出现 `IPC 0x80131505`，Widget 完全收不到 Desktop 状态。诊断确认 OCR/翻译后台仍有输出，断点是旧 Widget 页面占用了 Bridge 唯一的管道实例：结束 Widget 后，同一 Windows 用户立即能连接并读取当前三行状态。修复后的 Desktop Bridge 最多同时服务 8 个 Widget 页面，向所有连接广播同一状态；双客户端同时接收与回执自测通过。满 8 个连接时 Bridge 会等待空位而不空转；8 个测试连接同时断开后，清理异常已被隔离，随后重新连接自测通过。最终 Desktop 启动并唤醒 Game Bar 后，真实 Widget 占用 1 个连接，另 7 个诊断连接可同时建立并已释放，Bridge 仍存活，证明可见 Widget 已重新连上。当前实际安装包仍为 0.2.3.0。
+
+Widget 0.2.4.0 候选另外在页面导航和窗口关闭时主动释放管道，UWP/MSIX 构建 0 警告、0 错误；但本机未开启 Developer Mode，账户级 TrustedPeople 也不足以通过自签名完整证书链检查。由于没有获得扩大到机器级根证书信任的明确授权，0.2.4.0 没有安装，未把候选冒充已部署版本。所有本轮临时 0.2.4 证书均已清理；现阶段用多连接 Desktop Bridge + 已安装 0.2.3.0 完成即时修复，等待用户发送一条真实聊天确认显示内容。
+
 ## Overlay 技术决策
 
 1. Xbox Game Bar Widget：当前主路线，Host Gate 已通过。

@@ -32,18 +32,64 @@ internal sealed class GameBarBridge : IDisposable
     public const string PipeName = "LOCAL\\DotaScout.GameBarWidget.v1";
     private const string PipeLeafName = "DotaScout.GameBarWidget.v1";
     private const string WidgetPackageFamilyName = "DotaScout.GameBarWidget.Poc_x1vqwb1368zjj";
+    private const int MaxWidgetConnections = 8;
+
+    private sealed class WidgetConnection : IDisposable
+    {
+        private readonly object writeSync = new object();
+        private int disposed;
+
+        public readonly NamedPipeServerStream Pipe;
+        public readonly StreamReader Reader;
+        public readonly StreamWriter Writer;
+
+        public WidgetConnection(NamedPipeServerStream pipe)
+        {
+            Pipe = pipe;
+            Reader = new StreamReader(pipe, Encoding.UTF8, false, 4096, true);
+            Writer = new StreamWriter(pipe, new UTF8Encoding(false), 4096, true) { AutoFlush = true };
+        }
+
+        public void Send(string value)
+        {
+            lock (writeSync)
+            {
+                if (Pipe.IsConnected) Writer.WriteLine(value);
+            }
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+            lock (writeSync)
+            {
+                try { Writer.Dispose(); }
+                catch (IOException) { }
+                catch (ObjectDisposedException) { }
+                try { Reader.Dispose(); }
+                catch (IOException) { }
+                catch (ObjectDisposedException) { }
+                try { Pipe.Dispose(); }
+                catch (IOException) { }
+                catch (ObjectDisposedException) { }
+            }
+        }
+    }
 
     private readonly object sync = new object();
+    private readonly AutoResetEvent connectionSlotAvailable = new AutoResetEvent(false);
     private readonly JavaScriptSerializer json = new JavaScriptSerializer { MaxJsonLength = 16384 };
     private readonly Action<string> publish;
+    private readonly string serverPipeName;
+    private readonly List<WidgetConnection> connections = new List<WidgetConnection>();
     private volatile bool stopping;
-    private NamedPipeServerStream pipe;
-    private StreamWriter writer;
+    private NamedPipeServerStream pendingServer;
     private BridgeState latest;
 
-    public GameBarBridge(Action<string> publishEvent)
+    public GameBarBridge(Action<string> publishEvent, string pipeLeafName = PipeLeafName)
     {
         publish = publishEvent;
+        serverPipeName = GetWidgetServerPipeName(pipeLeafName);
     }
 
     public void Start()
@@ -110,32 +156,32 @@ internal sealed class GameBarBridge : IDisposable
     {
         while (!stopping)
         {
+            if (!WaitForConnectionSlot()) break;
             NamedPipeServerStream next = null;
             try
             {
                 next = CreatePipe();
+                lock (sync) pendingServer = next;
                 next.WaitForConnection();
                 if (stopping) break;
 
-                var nextWriter = new StreamWriter(next, new UTF8Encoding(false), 4096, true) { AutoFlush = true };
-                var reader = new StreamReader(next, Encoding.UTF8, false, 4096, true);
+                var connection = new WidgetConnection(next);
+                BridgeState initial;
+                int connectionCount;
                 lock (sync)
                 {
-                    pipe = next;
-                    writer = nextWriter;
+                    if (ReferenceEquals(pendingServer, next)) pendingServer = null;
+                    connections.Add(connection);
+                    initial = latest;
+                    connectionCount = connections.Count;
+                    PublishConnectionState(true, connectionCount);
                 }
-                Publish(new Dictionary<string, object> {
-                    { "type", "connection" },
-                    { "connected", true },
-                    { "at", UnixMilliseconds() }
-                });
-                if (latest != null) Send(latest);
-
-                string response;
-                while (!stopping && next.IsConnected && (response = reader.ReadLine()) != null)
-                {
-                    PublishWidgetResponse(response);
-                }
+                next = null;
+                var thread = new Thread(() => HandleConnection(connection, initial)) {
+                    IsBackground = true,
+                    Name = "DotaScoutGameBarClient"
+                };
+                thread.Start();
             }
             catch (Exception exception)
             {
@@ -151,26 +197,72 @@ internal sealed class GameBarBridge : IDisposable
             {
                 lock (sync)
                 {
-                    if (ReferenceEquals(pipe, next))
-                    {
-                        writer = null;
-                        pipe = null;
-                    }
+                    if (ReferenceEquals(pendingServer, next)) pendingServer = null;
                 }
                 if (next != null) next.Dispose();
-                if (!stopping)
-                {
-                    Publish(new Dictionary<string, object> {
-                        { "type", "connection" },
-                        { "connected", false },
-                        { "at", UnixMilliseconds() }
-                    });
-                }
             }
         }
     }
 
-    private static NamedPipeServerStream CreatePipe()
+    private bool WaitForConnectionSlot()
+    {
+        while (!stopping)
+        {
+            lock (sync)
+            {
+                if (connections.Count < MaxWidgetConnections) return true;
+            }
+            connectionSlotAvailable.WaitOne(500);
+        }
+        return false;
+    }
+
+    private void HandleConnection(WidgetConnection connection, BridgeState initial)
+    {
+        int connectionCount;
+        try
+        {
+            if (initial != null) connection.Send(json.Serialize(initial));
+            string response;
+            while (!stopping && connection.Pipe.IsConnected && (response = connection.Reader.ReadLine()) != null)
+            {
+                PublishWidgetResponse(response);
+            }
+        }
+        catch (Exception exception)
+        {
+            if (!stopping && !(exception is IOException) && !(exception is ObjectDisposedException))
+            {
+                Publish(new Dictionary<string, object> {
+                    { "type", "bridge-error" },
+                    { "error", exception.Message }
+                });
+            }
+        }
+        finally
+        {
+            lock (sync)
+            {
+                connections.Remove(connection);
+                connectionCount = connections.Count;
+                if (!stopping) PublishConnectionState(connectionCount > 0, connectionCount);
+            }
+            connection.Dispose();
+            connectionSlotAvailable.Set();
+        }
+    }
+
+    private void PublishConnectionState(bool connected, int connectionCount)
+    {
+        Publish(new Dictionary<string, object> {
+            { "type", "connection" },
+            { "connected", connected },
+            { "clientCount", connectionCount },
+            { "at", UnixMilliseconds() }
+        });
+    }
+
+    private NamedPipeServerStream CreatePipe()
     {
         var security = new PipeSecurity();
         security.SetAccessRuleProtection(true, false);
@@ -180,9 +272,9 @@ internal sealed class GameBarBridge : IDisposable
         security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier("S-1-15-2-1"), readWrite, AccessControlType.Allow));
         security.AddAccessRule(new PipeAccessRule(DeriveWidgetPackageSid(), readWrite, AccessControlType.Allow));
         return new NamedPipeServerStream(
-            GetWidgetServerPipeName(),
+            serverPipeName,
             PipeDirection.InOut,
-            1,
+            MaxWidgetConnections,
             PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous,
             16384,
@@ -208,6 +300,13 @@ internal sealed class GameBarBridge : IDisposable
 
     public static string GetWidgetServerPipeName()
     {
+        return GetWidgetServerPipeName(PipeLeafName);
+    }
+
+    internal static string GetWidgetServerPipeName(string pipeLeafName)
+    {
+        if (String.IsNullOrWhiteSpace(pipeLeafName) || pipeLeafName.IndexOfAny(new[] { '\\', '/' }) >= 0)
+            throw new ArgumentException("Invalid pipe leaf name.", "pipeLeafName");
         IntPtr sid;
         var result = DeriveAppContainerSidFromAppContainerName(WidgetPackageFamilyName, out sid);
         if (result != 0 || sid == IntPtr.Zero)
@@ -220,7 +319,7 @@ internal sealed class GameBarBridge : IDisposable
             var path = new StringBuilder((int)required);
             if (!GetAppContainerNamedObjectPath(IntPtr.Zero, sid, required, path, out required))
                 throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-            return "Sessions\\" + Process.GetCurrentProcess().SessionId + "\\" + path + "\\" + PipeLeafName;
+            return "Sessions\\" + Process.GetCurrentProcess().SessionId + "\\" + path + "\\" + pipeLeafName;
         }
         finally
         {
@@ -245,17 +344,20 @@ internal sealed class GameBarBridge : IDisposable
 
     private void Send(BridgeState state)
     {
-        lock (sync)
+        WidgetConnection[] snapshot;
+        lock (sync) snapshot = connections.ToArray();
+        var value = json.Serialize(state);
+        foreach (var connection in snapshot)
         {
-            if (writer == null || pipe == null || !pipe.IsConnected) return;
             try
             {
-                writer.WriteLine(json.Serialize(state));
+                connection.Send(value);
             }
             catch (IOException)
             {
                 // The accept loop reports the disconnect and waits for the widget to reconnect.
             }
+            catch (ObjectDisposedException) { }
         }
     }
 
@@ -293,12 +395,16 @@ internal sealed class GameBarBridge : IDisposable
     public void Dispose()
     {
         stopping = true;
+        connectionSlotAvailable.Set();
+        WidgetConnection[] snapshot;
         lock (sync)
         {
-            if (pipe != null) pipe.Dispose();
-            pipe = null;
-            writer = null;
+            if (pendingServer != null) pendingServer.Dispose();
+            pendingServer = null;
+            snapshot = connections.ToArray();
+            connections.Clear();
         }
+        foreach (var connection in snapshot) connection.Dispose();
     }
 }
 
@@ -315,43 +421,101 @@ internal static class Program
         }
     }
 
+    private static void RunSelfTestClient(string pipeName, ManualResetEvent release, Action<string> reportFailure)
+    {
+        try
+        {
+            var serializer = new JavaScriptSerializer();
+            using (var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous))
+            {
+                pipe.Connect(3000);
+                var reader = new StreamReader(pipe, Encoding.UTF8, false, 4096, true);
+                var writer = new StreamWriter(pipe, new UTF8Encoding(false), 4096, true) { AutoFlush = true };
+                var received = serializer.Deserialize<BridgeState>(reader.ReadLine());
+                if (received.lines.Length != 3 || received.lines[0].text != "two" || received.lines[2].text != "four")
+                    throw new InvalidDataException("Recent-three normalization failed.");
+                writer.WriteLine("{\"type\":\"ack\",\"version\":1,\"sequence\":7,\"appliedAt\":123}");
+                release.WaitOne(4000);
+            }
+        }
+        catch (Exception exception)
+        {
+            reportFailure(exception.Message);
+        }
+    }
+
     private static int SelfTest()
     {
         var serializer = new JavaScriptSerializer();
         var ack = new ManualResetEvent(false);
+        var releaseClients = new ManualResetEvent(false);
+        var failureSync = new object();
+        var ackCount = 0;
+        var testPipeLeafName = "DotaScout.GameBarWidget.selftest." + Process.GetCurrentProcess().Id;
+        var testPipeName = GameBarBridge.GetWidgetServerPipeName(testPipeLeafName);
         string failure = null;
         using (var bridge = new GameBarBridge(value => {
             Output(value);
-            if (value.Contains("\"type\":\"ack\"")) ack.Set();
-        }))
+            if (value.Contains("\"type\":\"ack\"") && Interlocked.Increment(ref ackCount) >= 2) ack.Set();
+        }, testPipeLeafName))
         {
             bridge.Start();
-            var client = new Thread(() => {
-                try
+            Action<string> reportFailure = value => {
+                lock (failureSync)
                 {
-                    using (var pipe = new NamedPipeClientStream(".", GameBarBridge.GetWidgetServerPipeName(), PipeDirection.InOut, PipeOptions.Asynchronous))
-                    {
-                        pipe.Connect(3000);
-                        var reader = new StreamReader(pipe, Encoding.UTF8, false, 4096, true);
-                        var writer = new StreamWriter(pipe, new UTF8Encoding(false), 4096, true) { AutoFlush = true };
-                        var received = serializer.Deserialize<BridgeState>(reader.ReadLine());
-                        if (received.lines.Length != 3 || received.lines[0].text != "two" || received.lines[2].text != "four")
-                            throw new InvalidDataException("Recent-three normalization failed.");
-                        writer.WriteLine("{\"type\":\"ack\",\"version\":1,\"sequence\":7,\"appliedAt\":123}");
-                    }
+                    if (failure == null) failure = value;
                 }
-                catch (Exception exception)
-                {
-                    failure = exception.Message;
-                    ack.Set();
-                }
-            }) { IsBackground = true };
-            client.Start();
+                ack.Set();
+            };
+            var firstClient = new Thread(() => RunSelfTestClient(testPipeName, releaseClients, reportFailure)) { IsBackground = true };
+            var secondClient = new Thread(() => RunSelfTestClient(testPipeName, releaseClients, reportFailure)) { IsBackground = true };
+            firstClient.Start();
+            secondClient.Start();
 
             Thread.Sleep(100);
             string error;
             bridge.AcceptDesktopState("{\"type\":\"state\",\"version\":1,\"sequence\":7,\"sentAt\":100,\"visible\":true,\"opacity\":0.75,\"lines\":[{\"language\":\"TH\",\"text\":\"one\"},{\"language\":\"ID\",\"text\":\"two\"},{\"language\":\"MS\",\"text\":\"three\"},{\"language\":\"EN\",\"text\":\"four\"}]}", out error);
             if (!ack.WaitOne(4000)) failure = "Timed out waiting for bridge acknowledgement.";
+            releaseClients.Set();
+            firstClient.Join(1000);
+            secondClient.Join(1000);
+
+            Thread.Sleep(100);
+            var burstClients = new List<NamedPipeClientStream>();
+            try
+            {
+                for (var index = 0; index < 8; index++)
+                {
+                    var client = new NamedPipeClientStream(".", testPipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+                    client.Connect(3000);
+                    burstClients.Add(client);
+                }
+            }
+            catch (Exception exception)
+            {
+                failure = "Full-capacity connection failed: " + exception.Message;
+            }
+            finally
+            {
+                foreach (var client in burstClients) client.Dispose();
+            }
+
+            Thread.Sleep(200);
+            try
+            {
+                using (var recovery = new NamedPipeClientStream(".", testPipeName, PipeDirection.InOut, PipeOptions.Asynchronous))
+                {
+                    recovery.Connect(3000);
+                    var reader = new StreamReader(recovery, Encoding.UTF8, false, 4096, true);
+                    var received = serializer.Deserialize<BridgeState>(reader.ReadLine());
+                    if (received == null || received.sequence != 7)
+                        failure = "Bridge did not recover after full-capacity disconnect.";
+                }
+            }
+            catch (Exception exception)
+            {
+                failure = "Full-capacity recovery failed: " + exception.Message;
+            }
         }
 
         if (failure != null)
@@ -359,7 +523,7 @@ internal static class Program
             Output(serializer.Serialize(new Dictionary<string, object> { { "ok", false }, { "error", failure } }));
             return 1;
         }
-        Output("{\"ok\":true,\"pipe\":\"LOCAL\\\\DotaScout.GameBarWidget.v1\",\"recentThree\":true,\"ack\":true}");
+        Output("{\"ok\":true,\"pipe\":\"LOCAL\\\\DotaScout.GameBarWidget.v1\",\"recentThree\":true,\"ack\":true,\"multipleClients\":true,\"fullCapacityRecovery\":true}");
         return 0;
     }
 

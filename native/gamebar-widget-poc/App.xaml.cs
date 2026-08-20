@@ -68,6 +68,8 @@ namespace DotaScout.GameBarWidget
 
         private void OnWidgetWindowClosed(object sender, Windows.UI.Core.CoreWindowEventArgs args)
         {
+            var page = (Window.Current.Content as Frame)?.Content as WidgetPage;
+            page?.StopBridge();
             widget = null;
             Window.Current.Closed -= OnWidgetWindowClosed;
         }

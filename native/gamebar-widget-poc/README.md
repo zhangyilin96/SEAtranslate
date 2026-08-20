@@ -20,6 +20,12 @@ client. Messages are versioned, newline-delimited JSON full-state snapshots and
 are restricted to `visible`, `opacity`, and at most three language/text lines.
 The widget returns an acknowledgement with applied time plus Game Bar pinned,
 click-through, visibility, opacity, display-mode, and window-state metadata.
+The Desktop bridge accepts up to eight simultaneous Widget views and broadcasts
+each full-state snapshot to all of them. This prevents an old or hidden Game Bar
+view from blocking the visible pinned view. At full capacity the accept loop
+waits for a slot instead of retrying in a tight loop, and disconnected streams
+are cleaned without terminating the Bridge. Version 0.2.4 of the Widget
+candidate also disposes its active pipe when its page or window closes.
 
 This follows Microsoft's documented Game Bar communication model for an
 unpackaged Win32 desktop process. The pipe ACL grants the current Desktop user,

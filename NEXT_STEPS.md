@@ -6,7 +6,7 @@
 
 Desktop → Game Bar Widget 最小 IPC 已完成。用户已确认全屏稳定可见、鼠标穿透、Dota 操作、性能修复和 0.2.2.0 固定三行布局均正常。
 
-第二轮实测暴露多玩家颜色、假昵称、重复 `go` 语义丢失和延迟问题。新候选支持冒号优先/多玩家色辅助的行切分、后台预判 EN/TH/MS/ID、英语 OCR 快速主路径与泰文按需回退、并行网络翻译和本地 Dota 短指令；Widget 0.2.3.0 已安装并隐藏语言标签，临时证书已核对无残留。最新用户截图离线回放、46 项常驻自动测试、Desktop production build 与 Widget 签名构建通过。**当前唯一下一步是用户运行 `Dota Scout Live Translate Accuracy Fix.exe` 复测**：重新打开 Game Bar Widget，依次发送 `go / gogo / gogogo / back / rs? / cant`，确认只显示 `Kiseki: 上 / 上上 / 上上上 / 撤 / 肉山？ / 不能` 并记录 OCR、Translate 耗时。得到结果前不要开发其他功能。
+第二轮实测暴露多玩家颜色、假昵称、重复 `go` 语义丢失和延迟问题。新候选支持冒号优先/多玩家色辅助的行切分、后台预判 EN/TH/MS/ID、英语 OCR 快速主路径与泰文按需回退、并行网络翻译和本地 Dota 短指令；Widget 0.2.3.0 已安装并隐藏语言标签，临时证书已核对无残留。后续 `IPC 0x80131505` 被确认是旧 Widget 页面占住单实例管道；新 Desktop Bridge 已改为 8 个并发连接，双客户端自测和真实 Widget 连接均通过。Widget 0.2.4.0 的主动断开候选已构建但未安装，当前运行组合是新 Desktop + 已安装的 0.2.3.0。**当前唯一下一步是用户在已重新打开的 Game Bar Widget 中发送一条 `gogogo`**，确认显示 `Kiseki: 上上上`。得到结果前不要继续扩展 OCR 或翻译功能。
 
 ## STEP 1：用户本人确认 Game Bar
 

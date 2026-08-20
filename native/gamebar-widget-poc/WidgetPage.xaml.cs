@@ -23,9 +23,11 @@ namespace DotaScout.GameBarWidget
         private const double DefaultWindowWidth = 520;
         private const double MinWindowWidth = 420;
         private const double MaxWindowWidth = 700;
+        private readonly object pipeSync = new object();
         private readonly SemaphoreSlim writeGate = new SemaphoreSlim(1, 1);
         private CancellationTokenSource bridgeCancellation;
         private XboxGameBarWidget widget;
+        private NamedPipeClientStream activePipe;
         private StreamWriter pipeWriter;
         private string bridgeError;
         private bool desktopVisible = true;
@@ -48,9 +50,22 @@ namespace DotaScout.GameBarWidget
 
         protected override void OnNavigatedFrom(NavigationEventArgs args)
         {
-            bridgeCancellation?.Cancel();
+            StopBridge();
             UnsubscribeWidgetEvents();
             base.OnNavigatedFrom(args);
+        }
+
+        internal void StopBridge()
+        {
+            bridgeCancellation?.Cancel();
+            NamedPipeClientStream pipe;
+            lock (pipeSync)
+            {
+                pipe = activePipe;
+                activePipe = null;
+                pipeWriter = null;
+            }
+            pipe?.Dispose();
         }
 
         private void SubscribeWidgetEvents()
@@ -107,10 +122,13 @@ namespace DotaScout.GameBarWidget
         {
             while (!cancellationToken.IsCancellationRequested)
             {
+                NamedPipeClientStream connectionPipe = null;
                 try
                 {
                     using (var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous))
                     {
+                        connectionPipe = pipe;
+                        lock (pipeSync) activePipe = pipe;
                         await pipe.ConnectAsync(2000);
                         using (var reader = new StreamReader(pipe, Encoding.UTF8, false, 4096, true))
                         using (var writer = new StreamWriter(pipe, new UTF8Encoding(false), 4096, true) { AutoFlush = true })
@@ -135,7 +153,11 @@ namespace DotaScout.GameBarWidget
                 }
                 finally
                 {
-                    pipeWriter = null;
+                    lock (pipeSync)
+                    {
+                        if (ReferenceEquals(activePipe, connectionPipe)) activePipe = null;
+                        pipeWriter = null;
+                    }
                     await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => UpdateConnectionLabel(false));
                 }
 
@@ -268,6 +290,7 @@ namespace DotaScout.GameBarWidget
                 if (ReferenceEquals(writer, pipeWriter)) await writer.WriteLineAsync(value.Stringify());
             }
             catch (IOException) { }
+            catch (ObjectDisposedException) { }
             finally { writeGate.Release(); }
         }
 
