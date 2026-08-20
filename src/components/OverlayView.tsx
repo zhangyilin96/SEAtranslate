@@ -50,7 +50,6 @@ export function OverlayView() {
             <section className="overlay-translations">
               {payload.translations.slice(-3).map((line) => (
                 <article key={line.id}>
-                  <small>[{line.language.toUpperCase()}]</small>
                   {settings.showOriginal && <p>{line.source}</p>}
                   <strong>{line.speaker ? `${line.speaker}: ` : ''}{line.translated}</strong>
                 </article>

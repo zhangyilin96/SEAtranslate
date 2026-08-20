@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chatLanguageLabel } from './language'
+import { chatLanguageLabel, detectChatLanguage, languageCodeForProvider } from './language'
 
 describe('SEA chat language labels', () => {
   it('detects Thai script before provider fallback', () => {
@@ -11,5 +11,15 @@ describe('SEA chat language labels', () => {
     expect(chatLanguageLabel('ms', 'tunggu')).toBe('MS')
     expect(chatLanguageLabel('id', 'jangan fight')).toBe('ID')
     expect(chatLanguageLabel('vi', 'unknown')).toBe('AUTO')
+  })
+
+  it('detects supported chat language before provider translation when signals are clear', () => {
+    expect(detectChatLanguage('อย่าเพิ่งสู้')).toBe('TH')
+    expect(detectChatLanguage('nggak bisa fight')).toBe('ID')
+    expect(detectChatLanguage('korang tunggu kejap')).toBe('MS')
+    expect(detectChatLanguage('back now')).toBe('EN')
+    expect(detectChatLanguage('mid')).toBe('AUTO')
+    expect(languageCodeForProvider('ID')).toBe('id')
+    expect(languageCodeForProvider('AUTO')).toBeUndefined()
   })
 })

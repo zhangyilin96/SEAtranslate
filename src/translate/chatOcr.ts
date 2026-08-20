@@ -1,4 +1,5 @@
 import { normalizeOcrLine } from './glossary'
+import { isNearDuplicate } from './chatLines'
 
 export type PixelImage = { data: Uint8ClampedArray; width: number; height: number }
 export type OcrChatLine = { speaker: string; message: string }
@@ -41,10 +42,10 @@ function colorRatios(image: PixelImage, word: OcrWord) {
   const top = Math.max(0, Math.floor(word.top))
   const right = Math.min(image.width, Math.ceil(word.left + word.width))
   const bottom = Math.min(image.height, Math.ceil(word.top + word.height))
-  let blue = 0
+  let playerColor = 0
   let light = 0
   let pixels = 0
-  let lastBlueX = -1
+  let lastPlayerColorX = -1
   for (let y = top; y < bottom; y += 1) {
     for (let x = left; x < right; x += 1) {
       const offset = (y * image.width + x) * 4
@@ -53,19 +54,25 @@ function colorRatios(image: PixelImage, word: OcrWord) {
       const blueChannel = image.data[offset + 2]
       const maximum = Math.max(red, green, blueChannel)
       const minimum = Math.min(red, green, blueChannel)
-      if (blueChannel > 130 && blueChannel > red * 1.35 && blueChannel > green * 1.12) {
-        blue += 1
-        lastBlueX = Math.max(lastBlueX, x)
+      if (maximum > 165 && maximum - minimum > 55) {
+        playerColor += 1
+        lastPlayerColorX = Math.max(lastPlayerColorX, x)
       }
       if (maximum > 170 && maximum - minimum < 55) light += 1
       pixels += 1
     }
   }
-  return { blue: pixels ? blue / pixels : 0, light: pixels ? light / pixels : 0, lastBlueX }
+  return { playerColor: pixels ? playerColor / pixels : 0, light: pixels ? light / pixels : 0, lastPlayerColorX }
 }
 
 function cleanSpeaker(value: string) {
   return normalizeOcrLine(value).replace(/^[\[({<]+|[\])}>:：]+$/g, '').trim()
+}
+
+function speakersLikelySame(left: string, right: string) {
+  const leftKey = left.toLocaleLowerCase()
+  const rightKey = right.toLocaleLowerCase()
+  return isNearDuplicate(left, right) || (leftKey.length >= 5 && rightKey.length >= 5 && leftKey.slice(-4) === rightKey.slice(-4))
 }
 
 export function extractChatLinesFromTsv(tsv: string, image: PixelImage): OcrChatLine[] {
@@ -75,32 +82,59 @@ export function extractChatLinesFromTsv(tsv: string, image: PixelImage): OcrChat
   const measuredGroups = [...groups.values()].map((words) => words
     .sort((left, right) => left.left - right.left)
     .map((word) => ({ word, ...colorRatios(image, word) })))
-  const hasBlueSpeakerText = measuredGroups.some((measured) => measured.some((item) => item.blue >= 0.035))
+  const hasPlayerColorText = measuredGroups.some((measured) => measured.some((item) => item.playerColor >= 0.035))
   const lines: OcrChatLine[] = []
   for (const measured of measuredGroups) {
     const ordered = measured.map(({ word }) => word)
-    const blueWords = measured.filter((item) => item.blue >= 0.035)
-    const lastBlueX = Math.max(-1, ...blueWords.map((item) => item.lastBlueX))
-    const speaker = blueWords
+    const playerWords = measured.filter((item) => item.playerColor >= 0.035)
+    const lastPlayerColorX = Math.max(-1, ...playerWords.map((item) => item.lastPlayerColorX))
+    let separatorIndex = -1
+    for (let index = 0; index < ordered.length; index += 1) if (/[:：]/.test(ordered[index].rawText)) separatorIndex = index
+    const colorSpeaker = playerWords
       .map((item) => ({ text: cleanSpeaker(item.word.text), rawText: item.word.rawText, confidence: item.word.confidence, left: item.word.left }))
       .filter((item) => /[\p{L}\p{N}]/u.test(item.text))
       .filter((item) => !/^[\[({<]/.test(item.rawText))
       .sort((left, right) => right.left - left.left || right.confidence - left.confidence)[0]?.text || ''
+    const structuralSpeaker = separatorIndex > 0
+      ? [...ordered.slice(0, separatorIndex)]
+        .reverse()
+        .map((word) => ({ text: cleanSpeaker(word.text), rawText: word.rawText, confidence: word.confidence }))
+        .find((item) => /[\p{L}\p{N}]/u.test(item.text) && !/^[\[({<]/.test(item.rawText) && !/[:：]/.test(item.rawText))?.text || ''
+      : ''
+    const speaker = structuralSpeaker || colorSpeaker
 
     let message = ''
-    if (lastBlueX >= 0) {
+    if (separatorIndex >= 0) {
+      const separatorWord = measured[separatorIndex]
+      const suffix = separatorWord.word.rawText.split(/[:：]/).at(-1) || ''
+      message = normalizeOcrLine([
+        suffix,
+        ...measured.slice(separatorIndex + 1).filter((item) => item.light >= 0.06).map((item) => item.word.text),
+      ].join(' '))
+    } else if (lastPlayerColorX >= 0) {
       message = normalizeOcrLine(measured
-        .filter((item) => item.word.left + item.word.width / 2 > lastBlueX + 2 && item.light >= 0.025 && item.blue < 0.035 && item.word.confidence >= 8)
+        .filter((item) => item.word.left + item.word.width / 2 > lastPlayerColorX + 2 && item.light >= 0.06 && item.playerColor < 0.035)
         .map((item) => item.word.text)
         .join(' '))
-    } else if (!hasBlueSpeakerText) {
+    } else if (!hasPlayerColorText) {
       const wholeLine = normalizeOcrLine(ordered.map((word) => word.text).join(' '))
       const separator = Math.max(wholeLine.lastIndexOf(':'), wholeLine.lastIndexOf('：'))
       message = separator >= 0
         ? normalizeOcrLine(wholeLine.slice(separator + 1))
-        : normalizeOcrLine(measured.filter((item) => item.light >= 0.025 && item.word.confidence >= 8).map((item) => item.word.text).join(' '))
+        : normalizeOcrLine(measured.filter((item) => item.light >= 0.025 && item.word.confidence >= 25).map((item) => item.word.text).join(' '))
     }
-    if (message.length >= 2) lines.push({ speaker, message })
+    const speakerLength = [...speaker].length
+    const plausibleSpeaker = /^[a-z0-9]+$/i.test(speaker) ? speakerLength >= 3 : speakerLength >= 2
+    if (plausibleSpeaker && message.length >= 2) lines.push({ speaker, message })
+    else if (!hasPlayerColorText && message.length >= 2) lines.push({ speaker: '', message })
   }
-  return lines.slice(-10)
+  const speakerFrequency = new Map<string, number>()
+  for (const { speaker } of lines) if (speaker) speakerFrequency.set(speaker, (speakerFrequency.get(speaker) || 0) + 1)
+  return lines.slice(-10).map((line) => {
+    if (!line.speaker) return line
+    const canonical = [...speakerFrequency.keys()]
+      .filter((candidate) => speakersLikelySame(candidate, line.speaker))
+      .sort((left, right) => (speakerFrequency.get(right) || 0) - (speakerFrequency.get(left) || 0) || right.length - left.length)[0]
+    return canonical ? { ...line, speaker: canonical } : line
+  })
 }

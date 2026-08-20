@@ -203,16 +203,7 @@ namespace DotaScout.GameBarWidget
             foreach (var line in lines)
             {
                 var row = new Grid { Height = 34 };
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(52) });
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                var language = new TextBlock {
-                    Text = "[" + line.Item1 + "]",
-                    FontFamily = new FontFamily("Segoe UI"),
-                    FontSize = 12.5,
-                    FontWeight = Windows.UI.Text.FontWeights.SemiBold,
-                    Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 69, 213, 255)),
-                    VerticalAlignment = VerticalAlignment.Center
-                };
                 var text = new TextBlock {
                     Text = line.Item2,
                     FontFamily = new FontFamily("Segoe UI"),
@@ -222,9 +213,7 @@ namespace DotaScout.GameBarWidget
                     TextTrimming = TextTrimming.CharacterEllipsis,
                     VerticalAlignment = VerticalAlignment.Center
                 };
-                Grid.SetColumn(language, 0);
-                Grid.SetColumn(text, 1);
-                row.Children.Add(language);
+                Grid.SetColumn(text, 0);
                 row.Children.Add(text);
                 LinesPanel.Children.Add(row);
             }

@@ -61,7 +61,7 @@ export function LiveTranslate() {
         {toggleError && <div className="translate-error">{toggleError}</div>}
         {worker.lastError && <div className="translate-error">{worker.lastError}</div>}
         <div className="translation-list">
-          {lines.length === 0 ? <div className="translation-empty"><strong>等待真实聊天消息</strong><span>首次扫描只建立基线，不会把进入游戏前已经存在的文字当作新消息。</span></div> : lines.map((line) => <article key={line.id}><small>{line.language.toUpperCase()}</small><p>{line.speaker ? `${line.speaker}: ` : ''}{line.source}</p><strong>{line.translated}</strong></article>)}
+          {lines.length === 0 ? <div className="translation-empty"><strong>等待真实聊天消息</strong><span>首次扫描只建立基线，不会把进入游戏前已经存在的文字当作新消息。</span></div> : lines.map((line) => <article key={line.id}><p>{line.speaker ? `${line.speaker}: ` : ''}{line.source}</p><strong>{line.speaker ? `${line.speaker}: ` : ''}{line.translated}</strong></article>)}
         </div>
         <details className="provider-settings"><summary>翻译服务设置</summary><label>Google Cloud API Key（可选）<input type="password" value={apiKey} onChange={(event) => { setApiKey(event.target.value); localStorage.setItem(API_KEY, event.target.value) }} placeholder="留空使用实验性免 Key 通道" /></label><p>Key 只保存在这台电脑的应用存储中；后台翻译窗口读取同一设置。</p></details>
       </section>
@@ -84,7 +84,7 @@ export function LiveTranslate() {
         </div>
         <label className="gamebar-opacity">Widget 内容透明度 <strong>{Math.round((gameBar?.state.opacity ?? .9) * 100)}%</strong><input type="range" min="20" max="100" value={(gameBar?.state.opacity ?? .9) * 100} onChange={(event) => void window.dotaScoutDesktop?.setGameBarOpacity(Number(event.target.value) / 100)} /></label>
         <div className="gamebar-test-preview">
-          {(gameBar?.state.lines.length ?? 0) === 0 ? <span>首条固定消息：[TH] 别打，等我。</span> : gameBar?.state.lines.map((line, index) => <p key={`${index}-${line.language}-${line.text}`}><small>[{line.language}]</small><strong>{line.text}</strong></p>)}
+          {(gameBar?.state.lines.length ?? 0) === 0 ? <span>首条固定消息：别打，等我。</span> : gameBar?.state.lines.map((line, index) => <p key={`${index}-${line.language}-${line.text}`}><strong>{line.text}</strong></p>)}
         </div>
         <p className="diagnostic-instruction">真实 OCR 翻译与诊断消息共用已验证的 IPC；Pinned 与 click-through 仍由 Xbox Game Bar 控制，不向 Dota 加载模块。</p>
         {gameBar?.status.lastError && <div className="translate-error">{gameBar.status.lastError}</div>}

@@ -1080,8 +1080,10 @@ function registerApiHandler() {
     const text = String(options.text || '').trim().slice(0, 1200)
     if (!text) return { ok: false, error: '没有可翻译的文字。' }
     const target = String(options.target || 'zh-CN')
+    const requestedSource = String(options.sourceLanguage || '').toLowerCase()
+    const sourceLanguage = ['en', 'th', 'ms', 'id'].includes(requestedSource) ? requestedSource : 'auto'
     const provider = options.apiKey ? 'google-cloud' : 'experimental'
-    const cacheKey = `${provider}\u0000${target}\u0000${text.toLocaleLowerCase()}`
+    const cacheKey = `${provider}\u0000${sourceLanguage}\u0000${target}\u0000${text.toLocaleLowerCase()}`
     const cached = translationCache.get(cacheKey)
     if (cached) return { ...cached, cached: true, elapsedMs: 0 }
     const startedAt = Date.now()
@@ -1093,14 +1095,14 @@ function registerApiHandler() {
         const response = await net.fetch(`https://translation.googleapis.com/language/translate/v2?key=${encodeURIComponent(options.apiKey)}`, {
           method: 'POST', signal: controller.signal,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ q: text, target, format: 'text' }),
+          body: JSON.stringify({ q: text, target, format: 'text', ...(sourceLanguage === 'auto' ? {} : { source: sourceLanguage }) }),
         })
         if (!response.ok) throw new Error(`Google Cloud 翻译失败（${response.status}）`)
         const data = await response.json()
         const item = data?.data?.translations?.[0]
         result = { ok: true, translated: item?.translatedText || text, language: item?.detectedSourceLanguage || 'auto', provider }
       } else {
-        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(target)}&dt=t&q=${encodeURIComponent(text)}`
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sourceLanguage)}&tl=${encodeURIComponent(target)}&dt=t&q=${encodeURIComponent(text)}`
         const response = await net.fetch(url, { signal: controller.signal })
         if (!response.ok) throw new Error(`在线翻译暂时不可用（${response.status}）`)
         const data = await response.json()

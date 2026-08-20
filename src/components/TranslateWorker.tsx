@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react'
 import type { TranslationLine, WorkerState } from '../desktop'
-import { diffNewChatLines, filterTtlDuplicates, normalizeChatLines } from '../translate/chatLines'
+import { diffNewChatLines, filterTtlDuplicates } from '../translate/chatLines'
 import { extractChatLinesFromTsv, type OcrChatLine } from '../translate/chatOcr'
 import { applyDotaGlossary, translateDotaCall } from '../translate/glossary'
 import { createFrameGateState, evaluateFrame, markFrameOcred } from '../translate/imageGate'
-import { chatLanguageLabel } from '../translate/language'
-import { getOcrWorker } from '../translate/ocr'
+import { chatLanguageLabel, detectChatLanguage, languageCodeForProvider } from '../translate/language'
+import { getOcrWorker, getThaiOcrWorker } from '../translate/ocr'
 import { createRegionFingerprint, cropCapture, readImagePixels, readSavedRegion, type SavedCaptureRegion } from '../translate/region'
 
 const API_KEY = 'dota-scout:google-translate-key-v1'
@@ -88,15 +88,17 @@ export function TranslateWorker() {
             const worker = await getOcrWorker((message, progress) => report(`OCR · ${message} ${Math.round(progress * 100)}%`, true, '', { captureMs }))
             const ocrStartedAt = performance.now()
             const result = await worker.recognize(sample, {}, { tsv: true })
-            const ocrMs = Math.round(performance.now() - ocrStartedAt)
             const ocrAt = Date.now()
             ocrCount += 1
             gate = markFrameOcred(gate, signature, ocrAt)
             const colorPixels = await readImagePixels(colorSample)
-            const structured = extractChatLinesFromTsv(result.data.tsv || '', colorPixels)
-            const candidates: OcrChatLine[] = structured.length
-              ? structured
-              : normalizeChatLines(result.data.text).map((message) => ({ speaker: '', message }))
+            let candidates: OcrChatLine[] = extractChatLinesFromTsv(result.data.tsv || '', colorPixels)
+            if (primed && candidates.length === 0) {
+              const fallback = await getThaiOcrWorker((message, progress) => report(`泰文 OCR · ${message} ${Math.round(progress * 100)}%`, true, '', { captureMs }))
+              const thaiResult = await fallback.recognize(sample, {}, { tsv: true })
+              candidates = extractChatLinesFromTsv(thaiResult.data.tsv || '', colorPixels)
+            }
+            const ocrMs = Math.round(performance.now() - ocrStartedAt)
             candidateCount = candidates.length
             recognizedPreview = candidates.slice(-3).map(({ speaker, message }) => `${speaker ? `${speaker}: ` : ''}${message}`)
             const currentMessages = candidates.map(({ message }) => message)
@@ -111,31 +113,40 @@ export function TranslateWorker() {
               const fresh = filterTtlDuplicates(appended, seenAt, ocrAt)
               let translateMs = 0
 
-              for (const source of fresh) {
-                const speaker = [...candidates].reverse().find((candidate) => candidate.message === source)?.speaker || ''
-                const quickTranslation = translateDotaCall(source)
-                let translatedText = quickTranslation
-                let detectedLanguage = quickTranslation ? 'en' : undefined
-                if (!quickTranslation) {
-                  const translateStartedAt = performance.now()
-                  const translated = await window.dotaScoutDesktop?.translateText({ text: source, target: 'zh-CN', apiKey: localStorage.getItem(API_KEY)?.trim() || undefined })
-                  translateMs += Math.round(performance.now() - translateStartedAt)
-                  if (!translated?.ok) throw new Error(translated?.error || '翻译失败')
-                  translatedText = translated.translated
-                  detectedLanguage = translated.language
+              if (fresh.length) {
+                const translateStartedAt = performance.now()
+                const translatedLines = await Promise.all(fresh.map(async (source): Promise<TranslationLine> => {
+                  const speaker = [...candidates].reverse().find((candidate) => candidate.message === source)?.speaker || ''
+                  const detectedBeforeTranslation = detectChatLanguage(source)
+                  const quickTranslation = translateDotaCall(source)
+                  let translatedText = quickTranslation
+                  let providerLanguage: string | undefined
+                  if (!quickTranslation) {
+                    const translated = await window.dotaScoutDesktop?.translateText({
+                      text: source,
+                      target: 'zh-CN',
+                      sourceLanguage: languageCodeForProvider(detectedBeforeTranslation),
+                      apiKey: localStorage.getItem(API_KEY)?.trim() || undefined,
+                    })
+                    if (!translated?.ok) throw new Error(translated?.error || '翻译失败')
+                    translatedText = translated.translated
+                    providerLanguage = translated.language
+                  }
+                  return {
+                    id: `${Date.now()}-${Math.random()}`,
+                    source,
+                    translated: applyDotaGlossary(translatedText || source, source),
+                    language: detectedBeforeTranslation === 'AUTO' ? chatLanguageLabel(providerLanguage, source) : detectedBeforeTranslation,
+                    at: Date.now(),
+                    speaker,
+                  }
+                }))
+                translateMs = Math.round(performance.now() - translateStartedAt)
+                if (!disposed && token === loopToken.current && foreground.current) {
+                  lines.current = [...lines.current, ...translatedLines].slice(-3)
+                  await window.dotaScoutDesktop?.updateOverlay({ translations: lines.current, configured: true, engineStatus: 'Translate ON', diagnostic: false })
+                  await window.dotaScoutDesktop?.publishGameBarTranslations(lines.current)
                 }
-                if (disposed || token !== loopToken.current || !foreground.current) break
-                const line: TranslationLine = {
-                  id: `${Date.now()}-${Math.random()}`,
-                  source,
-                  translated: applyDotaGlossary(translatedText || source, source),
-                  language: chatLanguageLabel(detectedLanguage, source),
-                  at: Date.now(),
-                  speaker,
-                }
-                lines.current = [...lines.current, line].slice(-3)
-                await window.dotaScoutDesktop?.updateOverlay({ translations: lines.current, configured: true, engineStatus: 'Translate ON', diagnostic: false })
-                await window.dotaScoutDesktop?.publishGameBarTranslations(lines.current)
               }
 
               const status = fresh.length ? `翻译完成 · 新消息 ${fresh.length} 条 · OCR #${ocrCount}` : candidates.length ? `实时翻译中 · 识别 ${candidates.length} 行 · OCR #${ocrCount}` : `实时翻译中 · 等待聊天 · OCR #${ocrCount}`

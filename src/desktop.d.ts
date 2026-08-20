@@ -109,7 +109,7 @@ declare global {
       reportWorkerState(state: WorkerState): Promise<{ ok: boolean }>
       finishOutgoing(options: { text?: string; copy?: boolean }): Promise<{ ok: boolean; copied: boolean; sent: false }>
       captureScreen(options?: { hideMain?: boolean; displayId?: string; maxWidth?: number }): Promise<ScreenCaptureResult>
-      translateText(options: { text: string; target?: string; apiKey?: string }): Promise<TranslationResult>
+      translateText(options: { text: string; target?: string; sourceLanguage?: string; apiKey?: string }): Promise<TranslationResult>
       setLiveTranslateEnabled(enabled: boolean): Promise<CompanionState>
       getGameBarState(): Promise<GameBarBridgeResult>
       sendGameBarTestMessage(): Promise<GameBarBridgeResult>

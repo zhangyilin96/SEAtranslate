@@ -3,11 +3,11 @@
 Minimal, isolated Xbox Game Bar widget used to validate Game Bar as the overlay
 host for Dota Scout and the first Desktop-to-Widget text communication link.
 
-Without a Desktop connection the widget displays a waiting state. The Desktop
-test control sends the first fixed message:
+Without a Desktop connection the widget displays a waiting state. Language is
+kept as internal bridge metadata but is not rendered in the compact in-game
+view. The Desktop test control sends the first fixed message:
 
 ```text
-[TH]
 别打，等我。
 ```
 

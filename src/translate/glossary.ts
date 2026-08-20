@@ -34,17 +34,21 @@ export function lineFingerprint(value: string) {
 const quickCalls: Array<[RegExp, string]> = [
   [/^(?:back|b)$/i, '撤'],
   [/^(?:w8|wait|waitme)$/i, '等一下'],
-  [/^(?:go){1,5}$/i, '上'],
   [/^(?:rs|rosh|roshan)$/i, '肉山'],
   [/^(?:bb|buyback)$/i, '买活'],
+  [/^(?:cant|cannot)$/i, '不能'],
+  [/^scant$/i, '不能'],
+  [/^no$/i, '不'],
+  [/^(?:yes|yep)$/i, '好'],
   [/^gg$/i, 'GG'],
 ]
 
 export function translateDotaCall(source: string) {
   const normalized = lineFingerprint(source)
+  if (/^(?:go){1,5}$/i.test(normalized)) return '上'.repeat(normalized.length / 2)
   const exact = quickCalls.find(([pattern]) => pattern.test(normalized))?.[1]
-  if (exact) return exact
-  if (/^g[go0e]{1,9}$/i.test(normalized) && /[o0]/i.test(normalized)) return '上'
+  if (exact) return /[?？]/.test(source) && /^(?:rs|rosh|roshan)$/i.test(normalized) ? `${exact}？` : exact
+  if (/^g[go0e]{1,9}$/i.test(normalized) && /[o0]/i.test(normalized)) return '上'.repeat(Math.max(1, Math.min(5, Math.floor(normalized.length / 2))))
   if (/^w(?:8+|ait|a1t|es)$/i.test(normalized)) return '等一下'
   return null
 }
