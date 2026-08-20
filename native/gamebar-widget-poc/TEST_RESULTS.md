@@ -1,12 +1,13 @@
 # Xbox Game Bar Widget PoC test results
 
-Test date: 2026-08-17
+Initial test date: 2026-08-17; current update: 2026-08-20
 
 Test host:
 
 - Windows 11
 - Dota 2 process: `dota2.exe`
-- Widget package: `DotaScout.GameBarWidget.Poc` 0.1.4.0, x64
+- Initial evidence package: `DotaScout.GameBarWidget.Poc` 0.1.4.0, x64
+- Current layout candidate installed: `DotaScout.GameBarWidget.Poc` 0.2.2.0, x64
 - Widget content: `DOTA SCOUT GAME BAR TEST`
 
 These results separate captured live evidence from perceptual user testing. A
@@ -40,7 +41,9 @@ test. Documentation-based expectations are not treated as test results.
 | Pinned click-through, default Game Bar state | FAIL | Before Game Bar click-through was enabled, the overlay region was owned by `GameBar.exe`. |
 | Pinned click-through, Game Bar click-through enabled | PASS | After enabling Game Bar's click-through control, the same coordinates were delivered to `dota2.exe`; the underlying Dota UI responded. |
 | Dota focus while clicking through | PASS (automated target test) | Clicks in the widget area were delivered to Dota and did not reopen the Game Bar control layer. |
-| Mouse stutter or latency | FAIL, FIX CANDIDATE AWAITING RETEST | On 2026-08-20 the user reported recurring mouse slowdown and light stutter that recovered after 2–3 seconds. Desktop automatic OCR and frequent process polling were then isolated from the IPC test path; the same Dota scenario must be retested. |
+| Mouse stutter or latency | PASS AFTER FIX | On 2026-08-20 the user reported that the stutter was gone after Desktop automatic OCR and frequent process polling were isolated from the IPC path. |
+| Three-line content fit | FIX CANDIDATE AWAITING RETEST | User screenshot showed the third line clipped at the 0.2.1.0 lower edge. Version 0.2.2.0 requests a fixed 200-DIP height and uses bounded 34-DIP rows. |
+| Reposition while click-through is active | HOST LIMITATION | Click-through deliberately sends mouse input to Dota, so the widget cannot be dragged in that state. Public Widget API supports resize, bounds inspection, and centering, but not arbitrary X/Y placement. |
 
 ## Safety and restoration
 
@@ -59,5 +62,6 @@ Xbox Game Bar successfully hosted this minimal Dota Scout overlay in the tested
 Windowed, Borderless, and Exclusive Fullscreen configurations. Click-through
 worked only after Game Bar's click-through mode was enabled. The user has now
 confirmed physical-screen visibility, click-through, and normal Dota operation.
-Perceptual mouse smoothness failed the first user test; the Desktop performance
-isolation fix must pass the same scenario before this route is Production Ready.
+Perceptual mouse smoothness passed after the Desktop performance isolation fix.
+The remaining gate is the user's visual confirmation that version 0.2.2.0 shows
+all three translation lines without clipping.

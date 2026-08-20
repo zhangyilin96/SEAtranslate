@@ -4,9 +4,9 @@
 
 ## 2026-08-20 当前 Gate
 
-Desktop → Game Bar Widget 最小 IPC 已完成。用户已确认全屏稳定可见、鼠标穿透与 Dota 操作正常，但首次实测出现周期性鼠标减速和 2–3 秒轻微卡顿。
+Desktop → Game Bar Widget 最小 IPC 已完成。用户已确认全屏稳定可见、鼠标穿透与 Dota 操作正常；隔离自动 OCR 和高频进程查询后，鼠标性能复测通过。
 
-已隔离自动 OCR 与高频进程查询。**当前唯一下一步是使用 `Dota Scout Performance Fix.exe` 在同一全屏场景复测鼠标流畅度。** 复测通过前不开始 OCR，也不把 Game Bar 标记为 Production Ready。
+用户截图发现第三条消息被底边裁切。**当前唯一下一步是安装并复测 0.2.2.0 Widget 的固定三行布局。** 布局通过后再开始翻译链路，不提前启动 OCR。
 
 ## STEP 1：用户本人确认 Game Bar
 

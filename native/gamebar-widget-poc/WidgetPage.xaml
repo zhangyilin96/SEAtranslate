@@ -7,7 +7,7 @@
     <Grid x:Name="RootGrid" Background="Transparent">
         <Border
             x:Name="ContentPanel"
-            Padding="14,10"
+            Padding="14,10,14,12"
             Background="#E60C121D"
             CornerRadius="8">
             <Grid>
@@ -16,7 +16,13 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <Grid Grid.Row="0" Margin="0,0,0,5">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
                     <TextBlock
+                        Grid.Column="0"
                         FontFamily="Segoe UI"
                         FontSize="12"
                         FontWeight="SemiBold"
@@ -24,16 +30,18 @@
                         Text="DOTA SCOUT · LIVE TRANSLATE" />
                     <TextBlock
                         x:Name="ConnectionText"
+                        Grid.Column="2"
                         HorizontalAlignment="Right"
+                        Margin="20,0,0,0"
                         FontFamily="Segoe UI"
                         FontSize="11"
                         Foreground="#FFA4B0C0"
                         Text="WAITING FOR DESKTOP" />
                 </Grid>
-                <StackPanel x:Name="LinesPanel" Grid.Row="1" VerticalAlignment="Center">
+                <StackPanel x:Name="LinesPanel" Grid.Row="1" VerticalAlignment="Top">
                     <TextBlock
                         FontFamily="Segoe UI"
-                        FontSize="18"
+                        FontSize="17"
                         Foreground="White"
                         Text="启动 Dota Scout 后发送测试消息。" />
                 </StackPanel>

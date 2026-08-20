@@ -62,7 +62,7 @@ Borderless 路线曾出现透明度、click-through 和鼠标轻微卡顿问题�
 | Pinned click-through 默认状态 | FAIL |
 | 开启 Game Bar click-through 后 | PASS |
 | Dota focus while clicking through | PASS |
-| Mouse perceptual stutter / latency | FAIL（用户实测出现减速与轻微卡顿，2–3 秒恢复） |
+| Mouse perceptual stutter / latency | PASS（隔离自动 OCR 与高频进程查询后，2026-08-20 用户复测无卡顿） |
 
 自动画面证据与用户肉眼可见是两个独立状态。用户确认前不得写成 Production Ready。完整记录见 `native/gamebar-widget-poc/TEST_RESULTS.md`。
 
@@ -72,7 +72,9 @@ Game Bar Widget 没有注入 Dota、向 `dota2.exe` 加载自有 DLL、Hook Dota
 
 已确认旧 Desktop 在保存 OCR 区域后，会在 Dota 前台自动执行全屏捕获、区域裁剪和四语言 Tesseract OCR，并在每轮结束后等待 1.8 秒；同时 Desktop 曾每 1 秒启动一次 `tasklist.exe`，界面又每 3 秒重复查询进程。这些后台负载与用户报告的周期性卡顿高度吻合。
 
-当前 Game Bar IPC 阶段已做最小隔离：正常启动不再创建实时 OCR 工作窗口，OCR PoC 与手动 OCR 测试代码均保留；Dota 后台进程查询改为缓存结果并最多每 15 秒执行一次，Dota 在前台时直接由前台窗口信息确认。该修复尚待用户在同一 Dota 场景复测，复测前 Game Bar 仍不是 Production Ready。
+当前 Game Bar IPC 阶段已做最小隔离：正常启动不再创建实时 OCR 工作窗口，OCR PoC 与手动 OCR 测试代码均保留；Dota 后台进程查询改为缓存结果并最多每 15 秒执行一次，Dota 在前台时直接由前台窗口信息确认。用户已在同一 Dota 场景复测并确认鼠标不卡顿。
+
+2026-08-20 用户截图发现第三条消息被 Widget 底边裁切。0.2.2.0 候选将 Widget 高度固定为 200 DIP，并压缩为明确的三行布局，尚待用户更新包后确认。Game Bar 公共 API 不支持任意 X/Y 预设位置；开启 click-through 后不能拖动属于宿主设计，位置调整需在 Game Bar 中临时关闭 click-through 后完成。
 
 ## Overlay 技术决策
 

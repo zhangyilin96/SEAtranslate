@@ -2,7 +2,7 @@
 
 Dota Scout / SEA Translate 是 Windows Dota 2 SEA 实时聊天翻译助手。当前最高优先级是 Live Translate；Match Scout、Player DNA、Coach 与玩家评分分析暂停。没有可靠数据来源时不展示 LIVE 结果，Demo 和手动 Debug 永远明确标注。
 
-当前 Overlay 首选候选是 Xbox Game Bar Widget。它已经完成 Windowed、Borderless 与 Exclusive Fullscreen 的 captured live evidence 测试，但仍等待用户本人确认 Exclusive Fullscreen 肉眼可见和鼠标流畅度，因此尚未标记为 Production Ready。完整状态见 `PROJECT_STATUS.md`，下一阶段严格按 `NEXT_STEPS.md` 执行。
+当前 Overlay 首选候选是 Xbox Game Bar Widget。Windowed、Borderless、Exclusive Fullscreen、用户肉眼可见、click-through、Dota focus 与性能隔离复测均已通过；三行显示高度修复仍等待用户确认，因此尚未标记为 Production Ready。完整状态见 `PROJECT_STATUS.md`，下一阶段严格按 `NEXT_STEPS.md` 执行。
 
 ## 普通用户启动
 
@@ -38,7 +38,7 @@ Dota Scout / SEA Translate 是 Windows Dota 2 SEA 实时聊天翻译助手。当
 - 实时链路为：截图 → Tesseract.js OCR → 去重 → 自动语言检测 → 翻译 → Dota 术语修正 → 最近三条 Overlay。
 - OCR 模型：英语、泰语、马来语、印尼语；首次使用需联网下载模型。
 - 翻译默认使用实验性免 Key 通道；可选 Google Cloud Translation Key。
-- OCR/翻译代码保留，但暂停新增功能与游戏内串联。先完成 Game Bar 用户确认，再验证 Desktop → Game Bar 的最小文本通信链。
+- OCR/翻译代码保留，但暂停新增功能与游戏内串联。Desktop → Game Bar 最小文本通信链已完成；先确认 Widget 三行布局，再进入翻译链路。
 
 ## 数据边界
 

@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Gaming.XboxGameBar;
+using Windows.Foundation;
 using Windows.Data.Json;
 using Windows.UI.Core;
 using Windows.UI.Xaml;
@@ -18,6 +19,10 @@ namespace DotaScout.GameBarWidget
     public sealed partial class WidgetPage : Page
     {
         private const string PipeName = "LOCAL\\DotaScout.GameBarWidget.v1";
+        private const double DesiredWindowHeight = 200;
+        private const double DefaultWindowWidth = 520;
+        private const double MinWindowWidth = 420;
+        private const double MaxWindowWidth = 700;
         private readonly SemaphoreSlim writeGate = new SemaphoreSlim(1, 1);
         private CancellationTokenSource bridgeCancellation;
         private XboxGameBarWidget widget;
@@ -36,6 +41,7 @@ namespace DotaScout.GameBarWidget
         {
             widget = args.Parameter as XboxGameBarWidget;
             SubscribeWidgetEvents();
+            _ = EnsureReadableWindowSizeAsync();
             bridgeCancellation = new CancellationTokenSource();
             _ = RunBridgeLoopAsync(bridgeCancellation.Token);
         }
@@ -68,6 +74,21 @@ namespace DotaScout.GameBarWidget
             widget.RequestedOpacityChanged -= WidgetStateChanged;
             widget.GameBarDisplayModeChanged -= WidgetStateChanged;
             widget.WindowStateChanged -= WidgetStateChanged;
+        }
+
+        private async Task EnsureReadableWindowSizeAsync()
+        {
+            if (widget == null) return;
+            widget.MinWindowSize = new Size(MinWindowWidth, DesiredWindowHeight);
+            widget.MaxWindowSize = new Size(MaxWindowWidth, DesiredWindowHeight);
+            widget.HorizontalResizeSupported = true;
+            widget.VerticalResizeSupported = false;
+
+            var currentWidth = widget.WindowBounds.Width;
+            if (currentWidth <= 0) currentWidth = DefaultWindowWidth;
+            currentWidth = Math.Max(MinWindowWidth, Math.Min(MaxWindowWidth, currentWidth));
+            try { await widget.TryResizeWindowAsync(new Size(currentWidth, DesiredWindowHeight)); }
+            catch { /* The manifest minimum still protects the three-line layout. */ }
         }
 
         private async void WidgetStateChanged(XboxGameBarWidget sender, object args)
@@ -181,13 +202,13 @@ namespace DotaScout.GameBarWidget
 
             foreach (var line in lines)
             {
-                var row = new Grid { Margin = new Thickness(0, 1, 0, 1) };
+                var row = new Grid { Height = 34 };
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(52) });
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 var language = new TextBlock {
                     Text = "[" + line.Item1 + "]",
                     FontFamily = new FontFamily("Segoe UI"),
-                    FontSize = 13,
+                    FontSize = 12.5,
                     FontWeight = Windows.UI.Text.FontWeights.SemiBold,
                     Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 69, 213, 255)),
                     VerticalAlignment = VerticalAlignment.Center
@@ -195,7 +216,7 @@ namespace DotaScout.GameBarWidget
                 var text = new TextBlock {
                     Text = line.Item2,
                     FontFamily = new FontFamily("Segoe UI"),
-                    FontSize = 18,
+                    FontSize = 17,
                     FontWeight = Windows.UI.Text.FontWeights.SemiBold,
                     Foreground = new SolidColorBrush(Windows.UI.Colors.White),
                     TextTrimming = TextTrimming.CharacterEllipsis,

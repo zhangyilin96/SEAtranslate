@@ -37,6 +37,12 @@ Scope boundaries:
 - pinning and Game Bar's built-in click-through capability are enabled in the
   package manifest.
 
+The production-sized test layout reserves a fixed 200-DIP height for the header
+and three translation lines. Game Bar's public API can read the current bounds,
+resize the widget, or center it, but it cannot assign an arbitrary screen X/Y
+position. To reposition, open Game Bar, temporarily disable click-through, drag
+the widget once, then re-enable click-through before returning to Dota.
+
 Build with `scripts/build-gamebar-widget-poc.ps1`. The project deliberately uses
 the standard UWP XAML/MSBuild pipeline from the Visual Studio Build Tools UWP
 workload. This keeps XAML initialization and package metadata aligned with the
