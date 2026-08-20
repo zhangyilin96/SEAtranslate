@@ -55,7 +55,7 @@ export function TranslateWorker() {
       report('正在监测聊天区域', true)
 
       while (!disposed && token === loopToken.current && foreground.current && region.current) {
-        const saved = region.current
+        const saved: SavedCaptureRegion = region.current
         const active = () => !disposed && token === loopToken.current && foreground.current && region.current === saved
         let captureMs = 0
         try {
@@ -150,7 +150,10 @@ export function TranslateWorker() {
                   }
                 }))
                 translateMs = Math.round(performance.now() - translateStartedAt)
-                if (!disposed && token === loopToken.current && foreground.current) {
+                // A completed OCR batch remains valid if focus changes while the
+                // provider is translating it. Only disposal or a new region can
+                // invalidate the result at this point.
+                if (!disposed && region.current === saved) {
                   lines.current = [...lines.current, ...translatedLines].slice(-3)
                   await window.dotaScoutDesktop?.updateOverlay({ translations: lines.current, configured: true, engineStatus: 'Translate ON', diagnostic: false })
                   await window.dotaScoutDesktop?.publishGameBarTranslations(lines.current)
