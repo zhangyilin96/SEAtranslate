@@ -52,7 +52,7 @@ export function OverlayView() {
                 <article key={line.id}>
                   <small>[{line.language.toUpperCase()}]</small>
                   {settings.showOriginal && <p>{line.source}</p>}
-                  <strong>{line.translated}</strong>
+                  <strong>{line.speaker ? `${line.speaker}: ` : ''}{line.translated}</strong>
                 </article>
               ))}
             </section>

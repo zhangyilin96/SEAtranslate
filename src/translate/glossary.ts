@@ -31,6 +31,24 @@ export function lineFingerprint(value: string) {
   return normalizeOcrLine(value).toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
 }
 
+const quickCalls: Array<[RegExp, string]> = [
+  [/^(?:back|b)$/i, '撤'],
+  [/^(?:w8|wait|waitme)$/i, '等一下'],
+  [/^(?:go){1,5}$/i, '上'],
+  [/^(?:rs|rosh|roshan)$/i, '肉山'],
+  [/^(?:bb|buyback)$/i, '买活'],
+  [/^gg$/i, 'GG'],
+]
+
+export function translateDotaCall(source: string) {
+  const normalized = lineFingerprint(source)
+  const exact = quickCalls.find(([pattern]) => pattern.test(normalized))?.[1]
+  if (exact) return exact
+  if (/^g[go0e]{1,9}$/i.test(normalized) && /[o0]/i.test(normalized)) return '上'
+  if (/^w(?:8+|ait|a1t|es)$/i.test(normalized)) return '等一下'
+  return null
+}
+
 export function applyDotaGlossary(translated: string, source = '') {
   let output = translated
   for (const [pattern, replacement] of glossary) {

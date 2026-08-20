@@ -834,7 +834,7 @@ function registerApiHandler() {
   ipcMain.handle('gamebar:refresh', () => updateGameBarState('refresh'))
   ipcMain.handle('gamebar:publish-translations', (_event, lines) => updateGameBarState('replace', Array.isArray(lines) ? lines.map((line) => ({
     language: String(line?.language || 'AUTO'),
-    text: String(line?.translated || ''),
+    text: `${line?.speaker ? `${String(line.speaker)}: ` : ''}${String(line?.translated || '')}`,
   })) : []))
 
   ipcMain.handle('overlay:update', (_event, payload) => {

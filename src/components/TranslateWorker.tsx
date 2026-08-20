@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react'
 import type { TranslationLine, WorkerState } from '../desktop'
 import { diffNewChatLines, filterTtlDuplicates, normalizeChatLines } from '../translate/chatLines'
-import { applyDotaGlossary } from '../translate/glossary'
+import { extractChatLinesFromTsv, type OcrChatLine } from '../translate/chatOcr'
+import { applyDotaGlossary, translateDotaCall } from '../translate/glossary'
 import { createFrameGateState, evaluateFrame, markFrameOcred } from '../translate/imageGate'
 import { chatLanguageLabel } from '../translate/language'
 import { getOcrWorker } from '../translate/ocr'
-import { createRegionFingerprint, cropCapture, readSavedRegion, type SavedCaptureRegion } from '../translate/region'
+import { createRegionFingerprint, cropCapture, readImagePixels, readSavedRegion, type SavedCaptureRegion } from '../translate/region'
 
 const API_KEY = 'dota-scout:google-translate-key-v1'
 const PROBE_WIDTH = 512
@@ -49,6 +50,7 @@ export function TranslateWorker() {
       let ocrCount = 0
       let candidateCount = 0
       let changePercent = 0
+      let recognizedPreview: string[] = []
       const seenAt = new Map<string, number>()
       report('正在监测聊天区域', true)
 
@@ -79,39 +81,57 @@ export function TranslateWorker() {
               throw new Error(`显示比例已变化：已保存 ${saved.captureWidth}×${saved.captureHeight}，当前捕获 ${capture.width}×${capture.height}。请按 Ctrl+Shift+F8 重新选择。`)
             }
 
-            const sample = await cropCapture(capture.image, saved)
+            const [sample, colorSample] = await Promise.all([
+              cropCapture(capture.image, saved),
+              cropCapture(capture.image, saved, false, true),
+            ])
             const worker = await getOcrWorker((message, progress) => report(`OCR · ${message} ${Math.round(progress * 100)}%`, true, '', { captureMs }))
             const ocrStartedAt = performance.now()
-            const result = await worker.recognize(sample)
+            const result = await worker.recognize(sample, {}, { tsv: true })
             const ocrMs = Math.round(performance.now() - ocrStartedAt)
             const ocrAt = Date.now()
             ocrCount += 1
             gate = markFrameOcred(gate, signature, ocrAt)
-            const candidates = normalizeChatLines(result.data.text)
+            const colorPixels = await readImagePixels(colorSample)
+            const structured = extractChatLinesFromTsv(result.data.tsv || '', colorPixels)
+            const candidates: OcrChatLine[] = structured.length
+              ? structured
+              : normalizeChatLines(result.data.text).map((message) => ({ speaker: '', message }))
             candidateCount = candidates.length
+            recognizedPreview = candidates.slice(-3).map(({ speaker, message }) => `${speaker ? `${speaker}: ` : ''}${message}`)
+            const currentMessages = candidates.map(({ message }) => message)
 
             if (!primed) {
-              previousCandidates = candidates
+              previousCandidates = currentMessages
               primed = true
-              report(candidates.length ? `实时翻译已启动 · 基线 ${candidates.length} 行 · OCR #${ocrCount}` : `实时翻译已启动 · OCR #${ocrCount}`, true, '', { captureMs, ocrMs, lastOcrAt: ocrAt, probeCount, ocrCount, candidateCount, changePercent })
+              report(candidates.length ? `实时翻译已启动 · 基线 ${candidates.length} 行 · OCR #${ocrCount}` : `实时翻译已启动 · OCR #${ocrCount}`, true, '', { captureMs, ocrMs, lastOcrAt: ocrAt, probeCount, ocrCount, candidateCount, changePercent, recognizedPreview })
             } else {
-              const appended = diffNewChatLines(previousCandidates, candidates)
-              previousCandidates = candidates
+              const appended = diffNewChatLines(previousCandidates, currentMessages).slice(-3)
+              previousCandidates = currentMessages
               const fresh = filterTtlDuplicates(appended, seenAt, ocrAt)
               let translateMs = 0
 
               for (const source of fresh) {
-                const translateStartedAt = performance.now()
-                const translated = await window.dotaScoutDesktop?.translateText({ text: source, target: 'zh-CN', apiKey: localStorage.getItem(API_KEY)?.trim() || undefined })
-                translateMs += Math.round(performance.now() - translateStartedAt)
-                if (!translated?.ok) throw new Error(translated?.error || '翻译失败')
+                const speaker = [...candidates].reverse().find((candidate) => candidate.message === source)?.speaker || ''
+                const quickTranslation = translateDotaCall(source)
+                let translatedText = quickTranslation
+                let detectedLanguage = quickTranslation ? 'en' : undefined
+                if (!quickTranslation) {
+                  const translateStartedAt = performance.now()
+                  const translated = await window.dotaScoutDesktop?.translateText({ text: source, target: 'zh-CN', apiKey: localStorage.getItem(API_KEY)?.trim() || undefined })
+                  translateMs += Math.round(performance.now() - translateStartedAt)
+                  if (!translated?.ok) throw new Error(translated?.error || '翻译失败')
+                  translatedText = translated.translated
+                  detectedLanguage = translated.language
+                }
                 if (disposed || token !== loopToken.current || !foreground.current) break
                 const line: TranslationLine = {
                   id: `${Date.now()}-${Math.random()}`,
                   source,
-                  translated: applyDotaGlossary(translated.translated, source),
-                  language: chatLanguageLabel(translated.language, source),
+                  translated: applyDotaGlossary(translatedText || source, source),
+                  language: chatLanguageLabel(detectedLanguage, source),
                   at: Date.now(),
+                  speaker,
                 }
                 lines.current = [...lines.current, line].slice(-3)
                 await window.dotaScoutDesktop?.updateOverlay({ translations: lines.current, configured: true, engineStatus: 'Translate ON', diagnostic: false })
@@ -119,11 +139,11 @@ export function TranslateWorker() {
               }
 
               const status = fresh.length ? `翻译完成 · 新消息 ${fresh.length} 条 · OCR #${ocrCount}` : candidates.length ? `实时翻译中 · 识别 ${candidates.length} 行 · OCR #${ocrCount}` : `实时翻译中 · 等待聊天 · OCR #${ocrCount}`
-              report(status, true, '', { captureMs, ocrMs, translateMs, lastOcrAt: ocrAt, probeCount, ocrCount, candidateCount, changePercent })
+              report(status, true, '', { captureMs, ocrMs, translateMs, lastOcrAt: ocrAt, probeCount, ocrCount, candidateCount, changePercent, recognizedPreview })
             }
           } else if (Date.now() - lastIdleReportAt >= IDLE_REPORT_INTERVAL_MS) {
             lastIdleReportAt = Date.now()
-            report('实时翻译中 · 轻量监测', true, '', { captureMs, probeCount, ocrCount, candidateCount, changePercent })
+            report('实时翻译中 · 轻量监测', true, '', { captureMs, probeCount, ocrCount, candidateCount, changePercent, recognizedPreview })
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : '实时翻译失败'

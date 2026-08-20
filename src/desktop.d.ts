@@ -1,7 +1,7 @@
 import type { PlayerMatch, ProfileResponse } from './types'
 import type { ScoutReport } from './scout/types'
 
-export type TranslationLine = { id: string; source: string; translated: string; language: string; at: number }
+export type TranslationLine = { id: string; source: string; translated: string; language: string; at: number; speaker?: string }
 export type OverlayPayload = { reports: ScoutReport[]; translations: TranslationLine[]; diagnostic: boolean; configured?: boolean; engineStatus?: string; dotaForeground?: boolean; shortcutStatus?: Record<string, boolean> }
 export type OverlaySettings = { opacity: number; position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'; fontSize: number; collapseDelay: number; showOriginal: boolean }
 export type OverlayVerification = { status: 'overlay-diagnosis-active'; label: string; userVisible: 'failed-current-test'; automatedCapture: 'secondary-evidence-only'; windowState: 'diagnosing'; dotaFocus: 'diagnosing'; clickThrough: 'diagnosing'; hotkey: 'verified-pass'; note: string }
@@ -50,7 +50,7 @@ export type HotkeyDiagnostic = {
   lastEvent: null | { action: HotkeyAction; accelerator: string; at: string; phase: HotkeyPhase; context: 'desktop' | 'dotaForeground'; dotaForeground: boolean; count: number }
 }
 export type CompanionState = { ok: true; dotaRunning: boolean; dotaForeground: boolean; overlayVisible: boolean; overlaySuppressed: boolean; settings: OverlaySettings; shortcuts: Record<string, boolean>; liveOcrEnabled: boolean; overlayVerification: OverlayVerification; hotkeyDiagnostic: HotkeyDiagnostic }
-export type WorkerState = { configured: boolean; running: boolean; status: string; lastScanAt?: number; lastOcrAt?: number; captureMs?: number; ocrMs?: number; translateMs?: number; probeCount?: number; ocrCount?: number; candidateCount?: number; changePercent?: number; lastError?: string }
+export type WorkerState = { configured: boolean; running: boolean; status: string; lastScanAt?: number; lastOcrAt?: number; captureMs?: number; ocrMs?: number; translateMs?: number; probeCount?: number; ocrCount?: number; candidateCount?: number; changePercent?: number; recognizedPreview?: string[]; lastError?: string }
 export type GameBarLine = { language: string; text: string }
 export type GameBarWidgetState = { type: 'state'; version: 1; sequence: number; sentAt: number; visible: boolean; opacity: number; lines: GameBarLine[] }
 export type GameBarBridgeStatus = {

@@ -57,10 +57,11 @@ export function LiveTranslate() {
         </div>
         {region && <div className="active-region-note"><strong>固定读取区域</strong><span>{region.displayName} · {region.captureWidth}×{region.captureHeight} · X {region.pixelX} · Y {region.pixelY} · W {region.pixelWidth} · H {region.pixelHeight}</span></div>}
         {worker.running && <div className="active-region-note"><strong>本轮性能</strong><span>Capture {worker.captureMs ?? 0} ms · OCR {worker.ocrMs ?? 0} ms · Translate {worker.translateMs ?? 0} ms · Probe #{worker.probeCount ?? 0} · OCR #{worker.ocrCount ?? 0} · Lines {worker.candidateCount ?? 0} · Δ {worker.changePercent ?? 0}%</span></div>}
+        {worker.running && (worker.recognizedPreview?.length ?? 0) > 0 && <div className="active-region-note"><strong>OCR 提取</strong><span>{worker.recognizedPreview?.join(' | ')}</span></div>}
         {toggleError && <div className="translate-error">{toggleError}</div>}
         {worker.lastError && <div className="translate-error">{worker.lastError}</div>}
         <div className="translation-list">
-          {lines.length === 0 ? <div className="translation-empty"><strong>等待真实聊天消息</strong><span>首次扫描只建立基线，不会把进入游戏前已经存在的文字当作新消息。</span></div> : lines.map((line) => <article key={line.id}><small>{line.language.toUpperCase()}</small><p>{line.source}</p><strong>{line.translated}</strong></article>)}
+          {lines.length === 0 ? <div className="translation-empty"><strong>等待真实聊天消息</strong><span>首次扫描只建立基线，不会把进入游戏前已经存在的文字当作新消息。</span></div> : lines.map((line) => <article key={line.id}><small>{line.language.toUpperCase()}</small><p>{line.speaker ? `${line.speaker}: ` : ''}{line.source}</p><strong>{line.translated}</strong></article>)}
         </div>
         <details className="provider-settings"><summary>翻译服务设置</summary><label>Google Cloud API Key（可选）<input type="password" value={apiKey} onChange={(event) => { setApiKey(event.target.value); localStorage.setItem(API_KEY, event.target.value) }} placeholder="留空使用实验性免 Key 通道" /></label><p>Key 只保存在这台电脑的应用存储中；后台翻译窗口读取同一设置。</p></details>
       </section>

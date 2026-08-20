@@ -35,7 +35,7 @@ Dota Scout / SEA Translate 是 Windows Dota 2 SEA 实时聊天翻译助手。当
 - 选择聊天区域采用两阶段交互：拖动框选 → 保持矩形 → 再次单击矩形或点击确认按钮保存；ESC 取消，重新拖动可调整。
 - Settings 显示显示器、X、Y、Width、Height 与保存区域预览。
 - “测试 OCR”会真实截图该区域一次，分开显示截图和 OCR 原文。
-- 实时链路为：低分辨率区域变化检测 → 稳定后截图 → Tesseract.js OCR → 有序新行检测 → TTL 去重 → 自动语言检测 → 翻译 → Dota 术语修正 → Game Bar 最近三条。
+- 实时链路为：低分辨率区域变化检测 → 稳定后截图 → Tesseract.js 单词位置 OCR → 蓝色说话人/右侧白色消息分离 → 有序新行检测 → TTL 去重 → 自动语言检测 → 翻译 → Dota 术语修正 → Game Bar 最近三条。
 - OCR 模型：英语、泰语、马来语、印尼语；首次使用需联网下载模型。
 - 翻译默认使用实验性免 Key 通道；可选 Google Cloud Translation Key。
 - 实时翻译默认由用户手动开启，设置会保存；只在 Dota 处于前台且已经保存固定区域时运行。

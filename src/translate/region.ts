@@ -45,7 +45,7 @@ async function loadImage(imageUrl: string) {
   return image
 }
 
-export async function cropCapture(imageUrl: string, region: CaptureRegion, preview = false) {
+export async function cropCapture(imageUrl: string, region: CaptureRegion, preview = false, preserveColor = false) {
   const image = await loadImage(imageUrl)
   const sourceWidth = Math.max(1, Math.round(image.naturalWidth * region.width))
   const sourceHeight = Math.max(1, Math.round(image.naturalHeight * region.height))
@@ -54,7 +54,7 @@ export async function cropCapture(imageUrl: string, region: CaptureRegion, previ
   canvas.width = Math.max(1, Math.round(sourceWidth * scale))
   canvas.height = Math.max(1, Math.round(sourceHeight * scale))
   const context = canvas.getContext('2d', { willReadFrequently: true })!
-  if (!preview) context.filter = 'contrast(1.35) saturate(.15)'
+  if (!preview && !preserveColor) context.filter = 'contrast(1.35) saturate(.15)'
   context.drawImage(
     image,
     image.naturalWidth * region.x,
@@ -67,6 +67,16 @@ export async function cropCapture(imageUrl: string, region: CaptureRegion, previ
     canvas.height,
   )
   return canvas.toDataURL(preview ? 'image/jpeg' : 'image/png', preview ? .78 : undefined)
+}
+
+export async function readImagePixels(imageUrl: string) {
+  const image = await loadImage(imageUrl)
+  const canvas = document.createElement('canvas')
+  canvas.width = image.naturalWidth
+  canvas.height = image.naturalHeight
+  const context = canvas.getContext('2d', { willReadFrequently: true })!
+  context.drawImage(image, 0, 0)
+  return { data: context.getImageData(0, 0, canvas.width, canvas.height).data, width: canvas.width, height: canvas.height }
 }
 
 export async function createRegionFingerprint(imageUrl: string, region: CaptureRegion) {

@@ -1,0 +1,51 @@
+import { describe, expect, it } from 'vitest'
+import { extractChatLinesFromTsv, type PixelImage } from './chatOcr'
+
+function wordTsv(word: string, wordNumber: number, left: number, width: number, confidence = 90) {
+  return `5\t1\t1\t1\t1\t${wordNumber}\t${left}\t2\t${width}\t12\t${confidence}\t${word}`
+}
+
+function imageWithWords(colors: Array<{ left: number; width: number; rgb: [number, number, number] }>): PixelImage {
+  const width = 120
+  const height = 18
+  const data = new Uint8ClampedArray(width * height * 4)
+  for (const { left, width: wordWidth, rgb } of colors) {
+    for (let y = 2; y < 14; y += 1) {
+      for (let x = left; x < left + wordWidth; x += 1) {
+        const offset = (y * width + x) * 4
+        data[offset] = rgb[0]
+        data[offset + 1] = rgb[1]
+        data[offset + 2] = rgb[2]
+        data[offset + 3] = 255
+      }
+    }
+  }
+  return { data, width, height }
+}
+
+describe('Dota chat color-aware OCR extraction', () => {
+  it('keeps the blue player id but translates only the white message', () => {
+    const tsv = [
+      wordTsv('[ALLY]', 1, 2, 14),
+      wordTsv('Kiseki', 2, 22, 24),
+      wordTsv('[TAG]:', 3, 50, 18, 99),
+      wordTsv('back', 4, 76, 18),
+    ].join('\n')
+    const image = imageWithWords([
+      { left: 2, width: 14, rgb: [230, 230, 220] },
+      { left: 22, width: 24, rgb: [35, 125, 245] },
+      { left: 50, width: 18, rgb: [35, 125, 245] },
+      { left: 76, width: 18, rgb: [245, 245, 235] },
+    ])
+    expect(extractChatLinesFromTsv(tsv, image)).toEqual([{ speaker: 'Kiseki', message: 'back' }])
+  })
+
+  it('supports a message-only crop without inventing a speaker', () => {
+    const tsv = [wordTsv('wait', 1, 5, 20), wordTsv('rosh', 2, 30, 22)].join('\n')
+    const image = imageWithWords([
+      { left: 5, width: 20, rgb: [245, 245, 235] },
+      { left: 30, width: 22, rgb: [245, 245, 235] },
+    ])
+    expect(extractChatLinesFromTsv(tsv, image)).toEqual([{ speaker: '', message: 'wait rosh' }])
+  })
+})
