@@ -4,6 +4,8 @@ import { isNearDuplicate } from './chatLines'
 export type PixelImage = { data: Uint8ClampedArray; width: number; height: number }
 export type OcrChatLine = { speaker: string; message: string }
 
+type MeasuredWord = OcrWord & { playerColor: number; light: number; lastPlayerColorX: number }
+
 type OcrWord = {
   text: string
   rawText: string
@@ -20,7 +22,7 @@ function parseTsvWords(tsv: string) {
     const columns = row.split('\t')
     if (columns.length < 12 || Number(columns[0]) !== 5) return []
     const rawText = columns.slice(11).join('\t').trim()
-    const text = normalizeOcrLine(rawText)
+    const text = normalizeOcrLine(rawText) || (/[:：]/.test(rawText) ? rawText : '')
     const width = Number(columns[8])
     const height = Number(columns[9])
     if (!text || width <= 0 || height <= 0) return []
@@ -75,28 +77,43 @@ function speakersLikelySame(left: string, right: string) {
   return isNearDuplicate(left, right) || (leftKey.length >= 5 && rightKey.length >= 5 && leftKey.slice(-4) === rightKey.slice(-4))
 }
 
+function contiguousMessageWords(words: MeasuredWord[], initialRight: number) {
+  const accepted: string[] = []
+  let previousRight = initialRight
+  let previousHeight = words[0]?.height || 0
+  for (const item of words) {
+    const gap = item.left - previousRight
+    const maximumGap = Math.max(24, Math.min(90, Math.max(previousHeight, item.height) * 2.2))
+    if (gap > maximumGap) break
+    if (item.light >= 0.06) accepted.push(item.text)
+    previousRight = Math.max(previousRight, item.left + item.width)
+    previousHeight = item.height
+  }
+  return accepted
+}
+
 export function extractChatLinesFromTsv(tsv: string, image: PixelImage): OcrChatLine[] {
   const groups = new Map<string, OcrWord[]>()
   for (const word of parseTsvWords(tsv)) groups.set(word.lineKey, [...(groups.get(word.lineKey) || []), word])
 
-  const measuredGroups = [...groups.values()].map((words) => words
+  const measuredGroups: MeasuredWord[][] = [...groups.values()].map((words) => words
     .sort((left, right) => left.left - right.left)
-    .map((word) => ({ word, ...colorRatios(image, word) })))
+    .map((word) => ({ ...word, ...colorRatios(image, word) })))
   const hasPlayerColorText = measuredGroups.some((measured) => measured.some((item) => item.playerColor >= 0.035))
   const lines: OcrChatLine[] = []
   for (const measured of measuredGroups) {
-    const ordered = measured.map(({ word }) => word)
     const playerWords = measured.filter((item) => item.playerColor >= 0.035)
     const lastPlayerColorX = Math.max(-1, ...playerWords.map((item) => item.lastPlayerColorX))
     let separatorIndex = -1
-    for (let index = 0; index < ordered.length; index += 1) if (/[:：]/.test(ordered[index].rawText)) separatorIndex = index
+    for (let index = 0; index < measured.length; index += 1) if (/[:：]/.test(measured[index].rawText)) separatorIndex = index
     const colorSpeaker = playerWords
-      .map((item) => ({ text: cleanSpeaker(item.word.text), rawText: item.word.rawText, confidence: item.word.confidence, left: item.word.left }))
+      .map((item) => ({ text: cleanSpeaker(item.text), rawText: item.rawText, confidence: item.confidence, left: item.left }))
       .filter((item) => /[\p{L}\p{N}]/u.test(item.text))
       .filter((item) => !/^[\[({<]/.test(item.rawText))
-      .sort((left, right) => right.left - left.left || right.confidence - left.confidence)[0]?.text || ''
+      .filter((item) => item.left <= image.width * .45)
+      .sort((left, right) => left.left - right.left || right.confidence - left.confidence)[0]?.text || ''
     const structuralSpeaker = separatorIndex > 0
-      ? [...ordered.slice(0, separatorIndex)]
+      ? [...measured.slice(0, separatorIndex)]
         .reverse()
         .map((word) => ({ text: cleanSpeaker(word.text), rawText: word.rawText, confidence: word.confidence }))
         .find((item) => /[\p{L}\p{N}]/u.test(item.text) && !/^[\[({<]/.test(item.rawText) && !/[:：]/.test(item.rawText))?.text || ''
@@ -106,22 +123,22 @@ export function extractChatLinesFromTsv(tsv: string, image: PixelImage): OcrChat
     let message = ''
     if (separatorIndex >= 0) {
       const separatorWord = measured[separatorIndex]
-      const suffix = separatorWord.word.rawText.split(/[:：]/).at(-1) || ''
+      const suffix = separatorWord.rawText.split(/[:：]/).at(-1) || ''
       message = normalizeOcrLine([
         suffix,
-        ...measured.slice(separatorIndex + 1).filter((item) => item.light >= 0.06).map((item) => item.word.text),
+        ...contiguousMessageWords(measured.slice(separatorIndex + 1), separatorWord.left + separatorWord.width),
       ].join(' '))
     } else if (lastPlayerColorX >= 0) {
       message = normalizeOcrLine(measured
-        .filter((item) => item.word.left + item.word.width / 2 > lastPlayerColorX + 2 && item.light >= 0.06 && item.playerColor < 0.035)
-        .map((item) => item.word.text)
+        .filter((item) => item.left + item.width / 2 > lastPlayerColorX + 2 && item.light >= 0.06 && item.playerColor < 0.035)
+        .map((item) => item.text)
         .join(' '))
     } else if (!hasPlayerColorText) {
-      const wholeLine = normalizeOcrLine(ordered.map((word) => word.text).join(' '))
+      const wholeLine = normalizeOcrLine(measured.map((word) => word.text).join(' '))
       const separator = Math.max(wholeLine.lastIndexOf(':'), wholeLine.lastIndexOf('：'))
       message = separator >= 0
         ? normalizeOcrLine(wholeLine.slice(separator + 1))
-        : normalizeOcrLine(measured.filter((item) => item.light >= 0.025 && item.word.confidence >= 25).map((item) => item.word.text).join(' '))
+        : normalizeOcrLine(measured.filter((item) => item.light >= 0.025 && item.confidence >= 25).map((item) => item.text).join(' '))
     }
     const speakerLength = [...speaker].length
     const plausibleSpeaker = /^[a-z0-9]+$/i.test(speaker) ? speakerLength >= 3 : speakerLength >= 2

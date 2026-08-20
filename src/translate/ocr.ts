@@ -9,7 +9,7 @@ async function createConfiguredWorker(languages: string[]) {
   const active = await createWorker(languages, undefined, {
       logger: (message) => progressListener?.(message.status || 'loading', message.progress || 0),
   })
-  await active.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK, preserve_interword_spaces: '1' })
+  await active.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_COLUMN, preserve_interword_spaces: '1', user_defined_dpi: '300' })
   return active
 }
 

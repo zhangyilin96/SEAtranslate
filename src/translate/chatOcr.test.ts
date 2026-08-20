@@ -6,7 +6,7 @@ function wordTsv(word: string, wordNumber: number, left: number, width: number, 
 }
 
 function imageWithWords(colors: Array<{ left: number; width: number; rgb: [number, number, number]; top?: number }>): PixelImage {
-  const width = 120
+  const width = Math.max(120, ...colors.map(({ left, width: wordWidth }) => left + wordWidth + 4))
   const height = Math.max(18, ...colors.map(({ top = 2 }) => top + 16))
   const data = new Uint8ClampedArray(width * height * 4)
   for (const { left, width: wordWidth, rgb, top = 2 } of colors) {
@@ -84,5 +84,23 @@ describe('Dota chat color-aware OCR extraction', () => {
       { left: 75, width: 20, rgb: [245, 245, 235] as [number, number, number], top: row.top },
     ]))
     expect(extractChatLinesFromTsv(tsv, image).map(({ speaker }) => speaker)).toEqual(['Kiseki', 'Kiseki', 'Kiseki'])
+  })
+
+  it('keeps a standalone separator and stops before distant scene noise', () => {
+    const tsv = [
+      wordTsv('kiseki', 1, 2, 46),
+      wordTsv('[TAG]', 2, 58, 42),
+      wordTsv(':', 3, 107, 3),
+      wordTsv('wtf', 4, 119, 24),
+      wordTsv('TREE', 5, 283, 40),
+    ].join('\n')
+    const image = imageWithWords([
+      { left: 2, width: 46, rgb: [35, 125, 245] },
+      { left: 58, width: 42, rgb: [35, 125, 245] },
+      { left: 107, width: 3, rgb: [245, 245, 235] },
+      { left: 119, width: 24, rgb: [245, 245, 235] },
+      { left: 283, width: 40, rgb: [245, 245, 235] },
+    ])
+    expect(extractChatLinesFromTsv(tsv, image)).toEqual([{ speaker: 'kiseki', message: 'wtf' }])
   })
 })

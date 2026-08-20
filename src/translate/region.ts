@@ -2,6 +2,7 @@ import type { ScreenCaptureResult } from '../desktop'
 
 export const REGION_KEY = 'dota-scout:chat-region-v2'
 export const LEGACY_REGION_KEY = 'dota-scout:chat-region-v1'
+const OCR_SCALE = 2
 
 export type CaptureRegion = { x: number; y: number; width: number; height: number }
 export type SavedCaptureRegion = CaptureRegion & {
@@ -50,12 +51,11 @@ export async function cropCapture(imageUrl: string, region: CaptureRegion, previ
   const sourceWidth = Math.max(1, Math.round(image.naturalWidth * region.width))
   const sourceHeight = Math.max(1, Math.round(image.naturalHeight * region.height))
   const scale = preview ? Math.min(1, 480 / sourceWidth, 180 / sourceHeight) : 1
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.max(1, Math.round(sourceWidth * scale))
-  canvas.height = Math.max(1, Math.round(sourceHeight * scale))
-  const context = canvas.getContext('2d', { willReadFrequently: true })!
-  if (!preview && !preserveColor) context.filter = 'contrast(1.35) saturate(.15)'
-  context.drawImage(
+  const sampled = document.createElement('canvas')
+  sampled.width = Math.max(1, Math.round(sourceWidth * scale))
+  sampled.height = Math.max(1, Math.round(sourceHeight * scale))
+  const sampledContext = sampled.getContext('2d', { willReadFrequently: true })!
+  sampledContext.drawImage(
     image,
     image.naturalWidth * region.x,
     image.naturalHeight * region.y,
@@ -63,10 +63,52 @@ export async function cropCapture(imageUrl: string, region: CaptureRegion, previ
     sourceHeight,
     0,
     0,
-    canvas.width,
-    canvas.height,
+    sampled.width,
+    sampled.height,
   )
-  return canvas.toDataURL(preview ? 'image/jpeg' : 'image/png', preview ? .78 : undefined)
+  if (preview) return sampled.toDataURL('image/jpeg', .78)
+
+  if (!preserveColor) {
+    const pixels = sampledContext.getImageData(0, 0, sampled.width, sampled.height)
+    const source = pixels.data
+    const outlinedText = new Uint8ClampedArray(source.length)
+    for (let y = 0; y < sampled.height; y += 1) {
+      for (let x = 0; x < sampled.width; x += 1) {
+        const offset = (y * sampled.width + x) * 4
+        const red = source[offset]
+        const green = source[offset + 1]
+        const blue = source[offset + 2]
+        const maximum = Math.max(red, green, blue)
+        const minimum = Math.min(red, green, blue)
+        const brightText = (maximum >= 155 && maximum - minimum <= 75)
+          || (maximum >= 135 && maximum - minimum >= 45)
+        let nearDarkOutline = false
+        for (let nearY = Math.max(0, y - 2); nearY < Math.min(sampled.height, y + 3) && !nearDarkOutline; nearY += 1) {
+          for (let nearX = Math.max(0, x - 2); nearX < Math.min(sampled.width, x + 3); nearX += 1) {
+            const nearOffset = (nearY * sampled.width + nearX) * 4
+            if ((source[nearOffset] + source[nearOffset + 1] + source[nearOffset + 2]) / 3 <= 85) {
+              nearDarkOutline = true
+              break
+            }
+          }
+        }
+        const value = brightText && nearDarkOutline ? 255 : 0
+        outlinedText[offset] = value
+        outlinedText[offset + 1] = value
+        outlinedText[offset + 2] = value
+        outlinedText[offset + 3] = 255
+      }
+    }
+    sampledContext.putImageData(new ImageData(outlinedText, sampled.width, sampled.height), 0, 0)
+  }
+
+  const canvas = document.createElement('canvas')
+  canvas.width = sampled.width * OCR_SCALE
+  canvas.height = sampled.height * OCR_SCALE
+  const context = canvas.getContext('2d')!
+  context.imageSmoothingEnabled = false
+  context.drawImage(sampled, 0, 0, canvas.width, canvas.height)
+  return canvas.toDataURL('image/png')
 }
 
 export async function readImagePixels(imageUrl: string) {
