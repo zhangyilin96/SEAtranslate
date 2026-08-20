@@ -45,7 +45,7 @@ Borderless 路线曾出现透明度、click-through 和鼠标轻微卡顿问题�
 
 ## Xbox Game Bar Widget PoC
 
-测试环境：Windows 11、Dota 2；当前安装 `DotaScout.GameBarWidget.Poc` 0.2.2.0 x64。Widget 显示 `DOTA SCOUT · LIVE TRANSLATE`。
+测试环境：Windows 11、Dota 2；当前安装 `DotaScout.GameBarWidget.Poc` 0.2.3.0 x64。0.2.2.0 已完成 Host 与三行布局验收；0.2.3.0 的无语言标签内容仍待真实 Dota 复测。Widget 显示 `DOTA SCOUT · LIVE TRANSLATE`。
 
 | 检查 | 结果 |
 | --- | --- |
@@ -92,7 +92,7 @@ Game Bar Widget 包本身没有注入 Dota、向 `dota2.exe` 加载自有 DLL、
 
 用户复测确认变化 Gate 已有反应，但首版把蓝色游戏 ID、战队标签与白色消息整体交给翻译，并受 OCR 抖动影响把多行旧内容反复当作新消息。修复版改用 Tesseract 单词位置与原始截图颜色：蓝色区只用于提取说话人，只有其右侧白色内容进入翻译；Widget 以 `说话人: 中文` 显示。`back`、`w8`、`gogogo` 及其常见 OCR 变体走本地 Dota 短指令表，不等待网络 Provider；每轮新增消息最多处理末尾三条。用户提供的 4K 截图已用同一 OCR 和颜色分离代码离线通过 `Kiseki + back / w8 / gogogo` 验证。37 项常驻自动测试与 production build 通过，仍等待真实 Dota 复测，尚不得记为 PASS。
 
-第二轮实测确认 `back` 可正确显示，但仍出现 `AT: 大的`、单个泰文字母假昵称、`gogogo` 重复语义丢失和 2–4 秒级处理延迟。新候选不再假设昵称只能是蓝色，而是优先按冒号结构切分昵称与消息，并以多种 Dota 玩家颜色辅助；丢弃过短假昵称，并用同批行的重复昵称纠正 `Iaseki → Kiseki`。OCR 主路径只加载英语字形，泰文模型在主路径无有效聊天时按需回退；MS/ID 在 OCR 后、翻译前由词汇信号判断，明确语言会传给 Provider。网络消息并行翻译，`go/gogo/gogogo` 分别本地输出 `上/上上/上上上`，`back/rs?/cant` 也不访问网络。Widget 0.2.3.0 候选隐藏语言标签，只显示 `Kiseki: 上上上`；源码与无签名 MSIX 构建通过，安装升级仍待用户授权。用户最新 4K 截图已离线通过说话人与 `gogogo/back/rs?/cant` 尾部提取验证；46 项常驻自动测试与 production build 通过，真实 Dota 仍待复测。
+第二轮实测确认 `back` 可正确显示，但仍出现 `AT: 大的`、单个泰文字母假昵称、`gogogo` 重复语义丢失和 2–4 秒级处理延迟。新候选不再假设昵称只能是蓝色，而是优先按冒号结构切分昵称与消息，并以多种 Dota 玩家颜色辅助；丢弃过短假昵称，并用同批行的重复昵称纠正 `Iaseki → Kiseki`。OCR 主路径只加载英语字形，泰文模型在主路径无有效聊天时按需回退；MS/ID 在 OCR 后、翻译前由词汇信号判断，明确语言会传给 Provider。网络消息并行翻译，`go/gogo/gogogo` 分别本地输出 `上/上上/上上上`，`back/rs?/cant` 也不访问网络。Widget 0.2.3.0 隐藏语言标签，只显示 `Kiseki: 上上上`；签名安装已完成，安装用临时证书指纹 `D4A4B8DD857B6B30131E48C45AD2E8D671FA4165` 已从 CurrentUser/LocalMachine 的 My、Root、TrustedPeople 复查为零。用户最新 4K 截图已离线通过说话人与 `gogogo/back/rs?/cant` 尾部提取验证；46 项常驻自动测试与 production build 通过，真实 Dota 仍待复测。
 
 ## Overlay 技术决策
 

@@ -62,12 +62,12 @@ powershell -ExecutionPolicy Bypass -File scripts/build-gamebar-widget-poc.ps1
 - Desktop 源码、测试和 production build 可运行；普通用户构建产物不进 Git。
 - Native Overlay PoC 可构建为独立测试 EXE，但 Exclusive Fullscreen 不可见，且 Borderless 产品手感仍需真人复测。
 - Game Bar Widget 0.2.2.0 已完成三种 Dota 显示模式、用户肉眼 Exclusive、click-through、Dota focus、性能隔离和固定三行布局验收。
-- Desktop → Widget IPC 已完成；提交 `794bc63` 接入真实 OCR 翻译链，Gate 修复 `9e27857` 已让真实新聊天产生反应，颜色分离修复 `fca3224` 已让 `back` 正确显示。最新候选进一步支持冒号优先/多玩家色辅助切分、假昵称过滤、重复昵称校正、翻译前语言判断、英语 OCR 快速主路径/泰文按需回退、并行网络翻译和保留重复次数的本地 Dota 短指令。Widget 0.2.3.0 隐藏语言标签。最新 4K 截图离线验证、46 项常驻测试、production build 与 Widget 无签名构建通过；安装和真实 Dota 仍待用户验收。
+- Desktop → Widget IPC 已完成；提交 `794bc63` 接入真实 OCR 翻译链，Gate 修复 `9e27857` 已让真实新聊天产生反应，颜色分离修复 `fca3224` 已让 `back` 正确显示。提交 `d425a29` 进一步支持冒号优先/多玩家色辅助切分、假昵称过滤、重复昵称校正、翻译前语言判断、英语 OCR 快速主路径/泰文按需回退、并行网络翻译和保留重复次数的本地 Dota 短指令。Widget 0.2.3.0 已签名安装并隐藏语言标签；安装用临时证书已核对无残留。最新 4K 截图离线验证、46 项常驻测试和 production build 通过；真实 Dota 仍待用户验收。
 - In-Process Dota Overlay 只完成研究 Gate，没有也不得存在 Dota loader、injector 或 hook 实现。
 
 ## 后续唯一允许的主线
 
-严格执行 `NEXT_STEPS.md`：当前唯一任务是在用户授权后安装 Widget 0.2.3.0 与最新 Desktop 候选，框选包含玩家色 ID 与白色消息的完整聊天行，实测 `go / gogo / gogogo / back / rs? / cant`。先确认 Widget 只显示正确说话人与中文，再记录 OCR、Translate 延迟和鼠标体感；得到结果前不要扩展其他功能。
+严格执行 `NEXT_STEPS.md`：当前唯一任务是让用户运行 `Dota Scout Live Translate Accuracy Fix.exe`，重新打开已升级的 Widget 0.2.3.0，框选完整聊天行并实测 `go / gogo / gogogo / back / rs? / cant`。先确认 Widget 只显示正确说话人与中文，再记录 OCR、Translate 延迟和鼠标体感；得到结果前不要扩展其他功能。
 
 ## 可选研究任务
 

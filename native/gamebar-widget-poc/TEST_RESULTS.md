@@ -7,8 +7,8 @@ Test host:
 - Windows 11
 - Dota 2 process: `dota2.exe`
 - Initial evidence package: `DotaScout.GameBarWidget.Poc` 0.1.4.0, x64
-- Current layout candidate installed: `DotaScout.GameBarWidget.Poc` 0.2.2.0, x64
-- 0.2.3.0 display candidate: source and unsigned MSIX build PASS; removes visible language tags so each row is only `speaker: translation`. Upgrade installation and live Game Bar verification are pending user authorization.
+- Current layout candidate installed: `DotaScout.GameBarWidget.Poc` 0.2.3.0, x64
+- 0.2.3.0 display candidate: signed MSIX build and upgrade installation PASS; removes visible language tags so each row is only `speaker: translation`. Installation certificate was removed from CurrentUser/LocalMachine My, Root, and TrustedPeople. Live Game Bar content verification is pending user retest.
 - Widget content: `DOTA SCOUT GAME BAR TEST`
 
 These results separate captured live evidence from perceptual user testing. A
