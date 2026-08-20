@@ -337,6 +337,22 @@ body.selector-mode #root, body.outgoing-mode #root { width: 100vw; height: 100vh
 .toggle-setting { grid-template-columns: 1fr auto !important; }
 .toggle-setting input { grid-column: 2 !important; width: 18px; height: 18px; accent-color: var(--acid); }
 
+.gamebar-ipc-card { margin-top: 18px; border-color: rgba(69,213,255,.32); }
+.gamebar-ipc-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.gamebar-ipc-heading h2 { margin: 7px 0 0; color: #edf3f0; font-size: 17px; }
+.gamebar-ipc-status { margin: 16px 0 12px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--line); }
+.gamebar-ipc-status span { min-height: 58px; padding: 9px 11px; display: grid; align-content: center; gap: 5px; color: #687176; border-right: 1px solid var(--line); font-size: 8px; }
+.gamebar-ipc-status span:last-child { border-right: 0; }
+.gamebar-ipc-status strong { overflow: hidden; color: #e0e6e2; font: 600 10px 'IBM Plex Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
+.gamebar-opacity { margin-top: 14px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 7px 12px; color: #8b9498; font-size: 10px; }
+.gamebar-opacity input { grid-column: 1 / -1; width: 100%; accent-color: var(--cyan); }
+.gamebar-opacity strong { color: var(--cyan); font: 600 10px 'IBM Plex Mono', monospace; }
+.gamebar-test-preview { min-height: 54px; margin: 14px 0; padding: 10px 12px; display: grid; align-content: center; gap: 4px; border: 1px solid rgba(69,213,255,.2); background: rgba(69,213,255,.035); }
+.gamebar-test-preview > span { color: #7f898d; font-size: 10px; }
+.gamebar-test-preview p { margin: 0; display: grid; grid-template-columns: 48px 1fr; align-items: center; }
+.gamebar-test-preview small { color: var(--cyan); font: 600 9px 'IBM Plex Mono', monospace; }
+.gamebar-test-preview strong { color: #e9eeeb; font-size: 12px; }
+
 .outgoing-overlay { width: calc(100vw - 12px); min-height: 176px; margin: 6px; overflow: hidden; border: 1px solid rgba(216,255,70,.42); border-radius: 6px; color: #f1f4ef; background: rgba(7,10,14,.94); box-shadow: 0 18px 55px rgba(0,0,0,.55); backdrop-filter: blur(12px); }
 .outgoing-overlay header { height: 34px; padding: 0 13px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,.08); }
 .outgoing-overlay header strong, .outgoing-overlay header span { color: var(--acid); font: 650 8px 'IBM Plex Mono', monospace; letter-spacing: .12em; }

@@ -51,6 +51,23 @@ export type HotkeyDiagnostic = {
 }
 export type CompanionState = { ok: true; dotaRunning: boolean; dotaForeground: boolean; overlayVisible: boolean; overlaySuppressed: boolean; settings: OverlaySettings; shortcuts: Record<string, boolean>; overlayVerification: OverlayVerification; hotkeyDiagnostic: HotkeyDiagnostic }
 export type WorkerState = { configured: boolean; running: boolean; status: string; lastScanAt?: number; lastError?: string }
+export type GameBarLine = { language: string; text: string }
+export type GameBarWidgetState = { type: 'state'; version: 1; sequence: number; sentAt: number; visible: boolean; opacity: number; lines: GameBarLine[] }
+export type GameBarBridgeStatus = {
+  processRunning: boolean
+  ready: boolean
+  connected: boolean
+  pinned: boolean
+  clickThrough: boolean
+  gameBarVisible: boolean
+  displayMode: string
+  windowState: string
+  lineCount: number
+  latencyMs: number | null
+  lastAckAt: string | null
+  lastError: string | null
+}
+export type GameBarBridgeResult = { ok: true; state: GameBarWidgetState; status: GameBarBridgeStatus }
 
 type DesktopApiResult =
   | { ok: true; profile: ProfileResponse; matches: PlayerMatch[] }
@@ -93,6 +110,12 @@ declare global {
       finishOutgoing(options: { text?: string; copy?: boolean }): Promise<{ ok: boolean; copied: boolean; sent: false }>
       captureScreen(options?: { hideMain?: boolean; displayId?: string }): Promise<ScreenCaptureResult>
       translateText(options: { text: string; target?: string; apiKey?: string }): Promise<TranslationResult>
+      getGameBarState(): Promise<GameBarBridgeResult>
+      sendGameBarTestMessage(): Promise<GameBarBridgeResult>
+      setGameBarVisible(visible: boolean): Promise<GameBarBridgeResult>
+      setGameBarOpacity(opacity: number): Promise<GameBarBridgeResult>
+      refreshGameBarState(): Promise<GameBarBridgeResult>
+      onGameBarState(callback: (state: GameBarBridgeResult) => void): () => void
       onOverlayPayload(callback: (payload: OverlayPayload) => void): () => void
       onOverlaySettings(callback: (settings: OverlaySettings) => void): () => void
       onOverlayDiagnostic(callback: (diagnostic: OverlayDiagnosticState) => void): () => void

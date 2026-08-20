@@ -24,6 +24,16 @@ contextBridge.exposeInMainWorld('dotaScoutDesktop', {
   finishOutgoing: (options) => ipcRenderer.invoke('outgoing:finish', options),
   captureScreen: (options) => ipcRenderer.invoke('capture:screen', options),
   translateText: (options) => ipcRenderer.invoke('translate:text', options),
+  getGameBarState: () => ipcRenderer.invoke('gamebar:get-state'),
+  sendGameBarTestMessage: () => ipcRenderer.invoke('gamebar:send-test-message'),
+  setGameBarVisible: (visible) => ipcRenderer.invoke('gamebar:set-visible', visible),
+  setGameBarOpacity: (opacity) => ipcRenderer.invoke('gamebar:set-opacity', opacity),
+  refreshGameBarState: () => ipcRenderer.invoke('gamebar:refresh'),
+  onGameBarState: (callback) => {
+    const listener = (_event, state) => callback(state)
+    ipcRenderer.on('gamebar:state', listener)
+    return () => ipcRenderer.removeListener('gamebar:state', listener)
+  },
   onOverlayPayload: (callback) => {
     const listener = (_event, payload) => callback(payload)
     ipcRenderer.on('overlay:payload', listener)

@@ -3,6 +3,8 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 const { execFile, spawn } = require('node:child_process')
+const readline = require('node:readline')
+const { TEST_MESSAGES, applyGameBarCommand, createGameBarState } = require('./gamebar-protocol.cjs')
 
 const APP_ID = 'com.dota-scout.desktop'
 const API_BASE = 'https://api.opendota.com/api'
@@ -82,6 +84,24 @@ let lastOverlayAction = 'IDLE'
 let lastOverlayError = null
 let lastZOrderResult = null
 let nativeOverlayProcess = null
+let gameBarBridgeProcess = null
+let gameBarBridgeReady = false
+let gameBarTestMessageIndex = 0
+let gameBarState = createGameBarState()
+let gameBarBridgeStatus = {
+  processRunning: false,
+  ready: false,
+  connected: false,
+  pinned: false,
+  clickThrough: false,
+  gameBarVisible: false,
+  displayMode: 'Unknown',
+  windowState: 'Unknown',
+  lineCount: 0,
+  latencyMs: null,
+  lastAckAt: null,
+  lastError: null,
+}
 let overlayDiagnosticUpdatedAt = new Date().toISOString()
 let startupErrorShown = false
 let heroMetadataCache = null
@@ -134,6 +154,107 @@ function nativeOverlayHelperPath() {
   return app.isPackaged
     ? path.join(process.resourcesPath, 'app.asar.unpacked', 'native', 'DotaScout.NativeOverlay.exe')
     : path.join(__dirname, '..', 'native', 'DotaScout.NativeOverlay.exe')
+}
+
+function gameBarBridgeHelperPath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'native', 'DotaScout.GameBarBridge.exe')
+    : path.join(__dirname, '..', 'native', 'DotaScout.GameBarBridge.exe')
+}
+
+function publishGameBarBridgeState() {
+  const value = { ok: true, state: gameBarState, status: gameBarBridgeStatus }
+  mainWindow?.webContents.send('gamebar:state', value)
+  return value
+}
+
+function writeGameBarState() {
+  if (!gameBarBridgeProcess?.stdin?.writable || !gameBarBridgeReady) return false
+  gameBarBridgeProcess.stdin.write(`${JSON.stringify(gameBarState)}\n`)
+  return true
+}
+
+function handleGameBarBridgeEvent(event) {
+  if (!event || typeof event.type !== 'string') return
+  if (event.type === 'bridge-ready') {
+    gameBarBridgeReady = true
+    gameBarBridgeStatus = { ...gameBarBridgeStatus, processRunning: true, ready: true, lastError: null }
+    writeGameBarState()
+  } else if (event.type === 'connection') {
+    gameBarBridgeStatus = { ...gameBarBridgeStatus, connected: Boolean(event.connected), lastError: null }
+    if (event.connected) writeGameBarState()
+  } else if (event.type === 'ack' || event.type === 'widget-status') {
+    const appliedAt = Number(event.appliedAt || 0)
+    const sentAt = Number(event.sentAt || 0)
+    const latencyMs = event.type === 'ack' && appliedAt >= sentAt && sentAt > 0 ? appliedAt - sentAt : gameBarBridgeStatus.latencyMs
+    gameBarBridgeStatus = {
+      ...gameBarBridgeStatus,
+      connected: true,
+      pinned: Boolean(event.pinned),
+      clickThrough: Boolean(event.clickThrough),
+      gameBarVisible: Boolean(event.gameBarVisible),
+      displayMode: String(event.displayMode || 'Unknown'),
+      windowState: String(event.windowState || 'Unknown'),
+      lineCount: Number(event.lineCount ?? gameBarBridgeStatus.lineCount) || 0,
+      latencyMs,
+      lastAckAt: new Date().toISOString(),
+      lastError: null,
+    }
+  } else if (event.type === 'bridge-error') {
+    gameBarBridgeStatus = { ...gameBarBridgeStatus, lastError: String(event.error || 'Game Bar bridge error') }
+    log(`GAME_BAR_BRIDGE_ERROR reason=${gameBarBridgeStatus.lastError}`)
+  }
+  publishGameBarBridgeState()
+}
+
+function startGameBarBridge() {
+  if (gameBarBridgeProcess && !gameBarBridgeProcess.killed) return true
+  const helper = gameBarBridgeHelperPath()
+  if (!fs.existsSync(helper)) {
+    gameBarBridgeStatus = { ...gameBarBridgeStatus, lastError: `Game Bar IPC Bridge 不存在: ${helper}` }
+    return false
+  }
+  try {
+    gameBarBridgeProcess = spawn(helper, [], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+    gameBarBridgeReady = false
+    gameBarBridgeStatus = { ...gameBarBridgeStatus, processRunning: true, ready: false, connected: false, lastError: null }
+    const output = readline.createInterface({ input: gameBarBridgeProcess.stdout })
+    output.on('line', (line) => {
+      try { handleGameBarBridgeEvent(JSON.parse(line)) }
+      catch { log(`GAME_BAR_BRIDGE_INVALID_OUTPUT value=${JSON.stringify(line.slice(0, 500))}`) }
+    })
+    gameBarBridgeProcess.stderr.on('data', (data) => log(`GAME_BAR_BRIDGE_STDERR value=${JSON.stringify(String(data).slice(0, 500))}`))
+    gameBarBridgeProcess.once('exit', (code) => {
+      log(`GAME_BAR_BRIDGE_EXIT code=${code}`)
+      output.close()
+      gameBarBridgeProcess = null
+      gameBarBridgeReady = false
+      gameBarBridgeStatus = { ...gameBarBridgeStatus, processRunning: false, ready: false, connected: false, lastError: code === 0 ? null : `Bridge exited with code ${code}` }
+      publishGameBarBridgeState()
+    })
+    log(`GAME_BAR_BRIDGE_STARTED pid=${gameBarBridgeProcess.pid}`)
+    return true
+  } catch (error) {
+    gameBarBridgeStatus = { ...gameBarBridgeStatus, processRunning: false, ready: false, connected: false, lastError: error instanceof Error ? error.message : String(error) }
+    return false
+  }
+}
+
+function stopGameBarBridge() {
+  if (gameBarBridgeProcess && !gameBarBridgeProcess.killed) gameBarBridgeProcess.kill()
+  gameBarBridgeProcess = null
+  gameBarBridgeReady = false
+}
+
+function updateGameBarState(command, value) {
+  if (!startGameBarBridge()) return publishGameBarBridgeState()
+  try {
+    gameBarState = applyGameBarCommand(gameBarState, command, value)
+    writeGameBarState()
+  } catch (error) {
+    gameBarBridgeStatus = { ...gameBarBridgeStatus, lastError: error instanceof Error ? error.message : String(error) }
+  }
+  return publishGameBarBridgeState()
 }
 
 function nativeOverlayStatusPath() {
@@ -657,6 +778,7 @@ if (!gotSingleInstanceLock) {
   app.whenReady().then(async () => {
     loadSettings()
     registerApiHandler()
+    startGameBarBridge()
     await ensureWorker()
     await registerCompanionShortcuts()
     createTray()
@@ -669,6 +791,16 @@ if (!gotSingleInstanceLock) {
 }
 
 function registerApiHandler() {
+  ipcMain.handle('gamebar:get-state', () => publishGameBarBridgeState())
+  ipcMain.handle('gamebar:send-test-message', () => {
+    const message = TEST_MESSAGES[gameBarTestMessageIndex % TEST_MESSAGES.length]
+    gameBarTestMessageIndex += 1
+    return updateGameBarState('append', message)
+  })
+  ipcMain.handle('gamebar:set-visible', (_event, visible) => updateGameBarState('visible', visible))
+  ipcMain.handle('gamebar:set-opacity', (_event, opacity) => updateGameBarState('opacity', opacity))
+  ipcMain.handle('gamebar:refresh', () => updateGameBarState('refresh'))
+
   ipcMain.handle('overlay:update', (_event, payload) => {
     overlayPayload = {
       reports: Array.isArray(payload?.reports) ? payload.reports : overlayPayload.reports,
@@ -1423,7 +1555,7 @@ app.on('window-all-closed', () => {
   log('所有 BrowserWindow 已关闭；后台进程保持运行')
 })
 
-app.on('before-quit', () => { isQuitting = true; stopNativeOverlayPoc() })
+app.on('before-quit', () => { isQuitting = true; stopGameBarBridge(); stopNativeOverlayPoc() })
 
 app.on('will-quit', () => {
   if (foregroundTimer) clearInterval(foregroundTimer)

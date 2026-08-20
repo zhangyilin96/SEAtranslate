@@ -1,17 +1,34 @@
 # Dota Scout Xbox Game Bar Widget PoC
 
-Minimal, isolated Xbox Game Bar widget used only to test whether Game Bar is a
-suitable overlay host for Dota Scout.
+Minimal, isolated Xbox Game Bar widget used to validate Game Bar as the overlay
+host for Dota Scout and the first Desktop-to-Widget text communication link.
 
-The widget displays exactly:
+Without a Desktop connection the widget displays a waiting state. The Desktop
+test control sends the first fixed message:
 
 ```text
-DOTA SCOUT GAME BAR TEST
+[TH]
+别打，等我。
 ```
+
+## Desktop communication
+
+`DotaScout.GameBarBridge.exe` is a small full-trust helper started by the
+Electron Desktop process. It owns
+`\\.\pipe\LOCAL\DotaScout.GameBarWidget.v1`; the UWP widget connects as the
+client. Messages are versioned, newline-delimited JSON full-state snapshots and
+are restricted to `visible`, `opacity`, and at most three language/text lines.
+The widget returns an acknowledgement with applied time plus Game Bar pinned,
+click-through, visibility, opacity, display-mode, and window-state metadata.
+
+This follows Microsoft's documented Game Bar communication model for an
+unpackaged Win32 desktop process. The pipe ACL grants the current Desktop user,
+the Windows app-package group, and the access required by AppContainer clients.
+It does not accept commands, file paths, scripts, OCR images, or Dota state.
 
 Scope boundaries:
 
-- no OCR, translation, Match Scout, network access, or game-state access;
+- no OCR, translation-provider, Match Scout, network access, or game-state access;
 - no Dota DLL, injection, hook, process memory access, or automation;
 - the widget is hosted by Xbox Game Bar as a UWP XAML view;
 - pinning and Game Bar's built-in click-through capability are enabled in the

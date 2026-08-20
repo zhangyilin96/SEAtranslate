@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { TranslationLine, WorkerState } from '../desktop'
+import type { GameBarBridgeResult, TranslationLine, WorkerState } from '../desktop'
 import { readSavedRegion, type SavedCaptureRegion } from '../translate/region'
 
 const API_KEY = 'dota-scout:google-translate-key-v1'
@@ -11,18 +11,21 @@ export function LiveTranslate() {
   const [foreground, setForeground] = useState(false)
   const [apiKey, setApiKey] = useState(() => localStorage.getItem(API_KEY) || '')
   const [overlayNote, setOverlayNote] = useState('用户最新实测为游戏内不可见；当前正在独立诊断 Overlay。')
+  const [gameBar, setGameBar] = useState<GameBarBridgeResult | null>(null)
 
   useEffect(() => {
     const removePayload = window.dotaScoutDesktop?.onOverlayPayload((payload) => setLines(payload.translations))
     const removeWorker = window.dotaScoutDesktop?.onWorkerState(setWorker)
     const removeRegion = window.dotaScoutDesktop?.onRegionChanged((next) => setRegion(next as SavedCaptureRegion | null))
     const removeForeground = window.dotaScoutDesktop?.onForegroundState((state) => setForeground(state.foreground))
+    const removeGameBar = window.dotaScoutDesktop?.onGameBarState(setGameBar)
     void window.dotaScoutDesktop?.getOverlayState().then((state) => state.ok && setLines(state.payload.translations))
     void window.dotaScoutDesktop?.getCompanionState().then((state) => {
       setForeground(state.dotaForeground)
       setOverlayNote(state.overlayVerification.note)
     })
-    return () => { removePayload?.(); removeWorker?.(); removeRegion?.(); removeForeground?.() }
+    void window.dotaScoutDesktop?.getGameBarState().then(setGameBar)
+    return () => { removePayload?.(); removeWorker?.(); removeRegion?.(); removeForeground?.(); removeGameBar?.() }
   }, [])
 
   return (
@@ -46,6 +49,30 @@ export function LiveTranslate() {
           {lines.length === 0 ? <div className="translation-empty"><strong>等待真实聊天消息</strong><span>首次扫描只建立基线，不会把进入游戏前已经存在的文字当作新消息。</span></div> : lines.map((line) => <article key={line.id}><small>{line.language.toUpperCase()}</small><p>{line.source}</p><strong>{line.translated}</strong></article>)}
         </div>
         <details className="provider-settings"><summary>翻译服务设置</summary><label>Google Cloud API Key（可选）<input type="password" value={apiKey} onChange={(event) => { setApiKey(event.target.value); localStorage.setItem(API_KEY, event.target.value) }} placeholder="留空使用实验性免 Key 通道" /></label><p>Key 只保存在这台电脑的应用存储中；后台翻译窗口读取同一设置。</p></details>
+      </section>
+      <section className="translate-console gamebar-ipc-card">
+        <div className="gamebar-ipc-heading">
+          <div><span className="overline">DESKTOP → GAME BAR / IPC TEST</span><h2>最小实时通信链</h2></div>
+          <span className={`status-pill ${gameBar?.status.connected ? 'active' : ''}`}>{gameBar?.status.connected ? 'WIDGET CONNECTED' : gameBar?.status.ready ? 'WAITING FOR WIDGET' : 'BRIDGE STARTING'}</span>
+        </div>
+        <div className="gamebar-ipc-status">
+          <span>最近消息<strong>{gameBar?.state.lines.length ?? 0} / 3</strong></span>
+          <span>Latency<strong>{gameBar?.status.latencyMs == null ? '待首次 ACK' : `${gameBar.status.latencyMs} ms`}</strong></span>
+          <span>Pinned<strong>{gameBar?.status.pinned ? 'YES' : 'NO / WAITING'}</strong></span>
+          <span>Click-through<strong>{gameBar?.status.clickThrough ? 'YES' : 'NO / WAITING'}</strong></span>
+          <span>Widget host<strong>{gameBar?.status.displayMode || 'Unknown'}</strong></span>
+        </div>
+        <div className="settings-actions">
+          <button className="primary-button" onClick={() => void window.dotaScoutDesktop?.sendGameBarTestMessage()}>发送下一条测试消息</button>
+          <button className="ghost-button" onClick={() => void window.dotaScoutDesktop?.setGameBarVisible(!(gameBar?.state.visible ?? true))}>{gameBar?.state.visible ? 'Hide Widget Content' : 'Show Widget Content'}</button>
+          <button className="ghost-button" onClick={() => void window.dotaScoutDesktop?.refreshGameBarState()}>Refresh State</button>
+        </div>
+        <label className="gamebar-opacity">Widget 内容透明度 <strong>{Math.round((gameBar?.state.opacity ?? .9) * 100)}%</strong><input type="range" min="20" max="100" value={(gameBar?.state.opacity ?? .9) * 100} onChange={(event) => void window.dotaScoutDesktop?.setGameBarOpacity(Number(event.target.value) / 100)} /></label>
+        <div className="gamebar-test-preview">
+          {(gameBar?.state.lines.length ?? 0) === 0 ? <span>首条固定消息：[TH] 别打，等我。</span> : gameBar?.state.lines.map((line, index) => <p key={`${index}-${line.language}-${line.text}`}><small>[{line.language}]</small><strong>{line.text}</strong></p>)}
+        </div>
+        <p className="diagnostic-instruction">Pinned 与 click-through 由 Xbox Game Bar 本身控制；Desktop 只读取并报告状态。此链路不连接 OCR，也不向 Dota 加载模块。</p>
+        {gameBar?.status.lastError && <div className="translate-error">{gameBar.status.lastError}</div>}
       </section>
     </div>
   )

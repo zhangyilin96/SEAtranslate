@@ -4,14 +4,40 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:DotaScout.GameBarWidget"
     Background="Transparent">
-    <Grid Background="#D90C121D">
-        <TextBlock
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            FontFamily="Segoe UI"
-            FontSize="26"
-            FontWeight="SemiBold"
-            Foreground="White"
-            Text="DOTA SCOUT GAME BAR TEST" />
+    <Grid x:Name="RootGrid" Background="Transparent">
+        <Border
+            x:Name="ContentPanel"
+            Padding="14,10"
+            Background="#E60C121D"
+            CornerRadius="8">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" Margin="0,0,0,5">
+                    <TextBlock
+                        FontFamily="Segoe UI"
+                        FontSize="12"
+                        FontWeight="SemiBold"
+                        Foreground="#FF45D5FF"
+                        Text="DOTA SCOUT · LIVE TRANSLATE" />
+                    <TextBlock
+                        x:Name="ConnectionText"
+                        HorizontalAlignment="Right"
+                        FontFamily="Segoe UI"
+                        FontSize="11"
+                        Foreground="#FFA4B0C0"
+                        Text="WAITING FOR DESKTOP" />
+                </Grid>
+                <StackPanel x:Name="LinesPanel" Grid.Row="1" VerticalAlignment="Center">
+                    <TextBlock
+                        FontFamily="Segoe UI"
+                        FontSize="18"
+                        Foreground="White"
+                        Text="启动 Dota Scout 后发送测试消息。" />
+                </StackPanel>
+            </Grid>
+        </Border>
     </Grid>
 </Page>
