@@ -20,9 +20,7 @@ const GAME_OVERLAY_VERIFICATION = {
   note: '热键已经通过；当前只诊断 Overlay Window、Z-order、焦点与输入穿透，不再用自动截图替代用户肉眼结论。',
 }
 const isSmokeTest = process.argv.includes('--smoke-test')
-// Live OCR is intentionally opt-in while the Game Bar IPC/performance gate is active.
-// This keeps the existing OCR PoC available without running Tesseract during normal play.
-const liveOcrAutostartEnabled = process.env.DOTA_SCOUT_ENABLE_LIVE_OCR === '1'
+let liveTranslateEnabled = process.env.DOTA_SCOUT_ENABLE_LIVE_OCR === '1'
 const DOTA_PROCESS_POLL_INTERVAL_MS = 15_000
 const liveProbePath = process.env.DOTA_SCOUT_LIVE_PROBE_OUTPUT || ''
 const liveProbeScreenshotPath = process.env.DOTA_SCOUT_LIVE_PROBE_SCREENSHOT || ''
@@ -110,6 +108,7 @@ let gameBarBridgeStatus = {
 let overlayDiagnosticUpdatedAt = new Date().toISOString()
 let startupErrorShown = false
 let heroMetadataCache = null
+let translationCache = new Map()
 let overlayPayload = { reports: [], translations: [], diagnostic: false, configured: false, engineStatus: '等待 Dota 2', dotaForeground: false }
 let overlaySettings = { opacity: 0.9, position: 'top-right', fontSize: 15, collapseDelay: 6500, showOriginal: false }
 let hotkeyDiagnostic = {
@@ -540,6 +539,7 @@ function loadSettings() {
       collapseDelay: Math.max(2000, Math.min(20000, Number(stored.collapseDelay) || overlaySettings.collapseDelay)),
       showOriginal: Boolean(stored.showOriginal),
     }
+    if (typeof stored.liveTranslateEnabled === 'boolean') liveTranslateEnabled = stored.liveTranslateEnabled
   } catch {
     // First launch has no settings file.
   }
@@ -547,7 +547,7 @@ function loadSettings() {
 
 function saveSettings() {
   fs.mkdirSync(path.dirname(settingsPath()), { recursive: true })
-  fs.writeFileSync(settingsPath(), JSON.stringify(overlaySettings, null, 2), 'utf8')
+  fs.writeFileSync(settingsPath(), JSON.stringify({ ...overlaySettings, liveTranslateEnabled }, null, 2), 'utf8')
 }
 
 function writeCaptureDataUrl(filePath, dataUrl) {
@@ -746,13 +746,17 @@ async function startForegroundMonitor() {
   foregroundTimer = setInterval(check, 1000)
 }
 
-async function captureDisplay(displayId) {
+async function captureDisplay(displayId, maxWidth) {
   try {
     const displays = screen.getAllDisplays()
     const requested = displays.find((item) => String(item.id) === String(displayId))
     const display = requested || screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
-    const width = Math.round(display.size.width * display.scaleFactor)
-    const height = Math.round(display.size.height * display.scaleFactor)
+    const nativeWidth = Math.round(display.size.width * display.scaleFactor)
+    const nativeHeight = Math.round(display.size.height * display.scaleFactor)
+    const requestedMaxWidth = Number(maxWidth)
+    const scale = Number.isFinite(requestedMaxWidth) && requestedMaxWidth >= 160 ? Math.min(1, requestedMaxWidth / nativeWidth) : 1
+    const width = Math.max(1, Math.round(nativeWidth * scale))
+    const height = Math.max(1, Math.round(nativeHeight * scale))
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width, height } })
     const source = sources.find((item) => item.display_id === String(display.id)) || sources[0]
     if (!source || source.thumbnail.isEmpty()) return { ok: false, error: '无法读取当前屏幕，请检查 Windows 屏幕录制权限。' }
@@ -790,8 +794,8 @@ if (!gotSingleInstanceLock) {
     loadSettings()
     registerApiHandler()
     startGameBarBridge()
-    if (liveOcrAutostartEnabled || isSmokeTest) await ensureWorker()
-    else log('LIVE_OCR_AUTOSTART_DISABLED reason=GAME_BAR_IPC_PERFORMANCE_GATE')
+    if (liveTranslateEnabled || isSmokeTest) await ensureWorker()
+    else log('LIVE_TRANSLATE_DISABLED reason=USER_SETTING')
     await registerCompanionShortcuts()
     createTray()
     await createWindow()
@@ -800,6 +804,21 @@ if (!gotSingleInstanceLock) {
     showStartupError(error)
     app.exit(1)
   })
+}
+
+function companionStateSnapshot() {
+  return {
+    ok: true,
+    dotaRunning,
+    dotaForeground,
+    overlayVisible: Boolean(overlayWindow?.isVisible()),
+    overlaySuppressed,
+    settings: overlaySettings,
+    shortcuts: overlayPayload.shortcutStatus || {},
+    liveOcrEnabled: liveTranslateEnabled,
+    overlayVerification: GAME_OVERLAY_VERIFICATION,
+    hotkeyDiagnostic,
+  }
 }
 
 function registerApiHandler() {
@@ -812,6 +831,10 @@ function registerApiHandler() {
   ipcMain.handle('gamebar:set-visible', (_event, visible) => updateGameBarState('visible', visible))
   ipcMain.handle('gamebar:set-opacity', (_event, opacity) => updateGameBarState('opacity', opacity))
   ipcMain.handle('gamebar:refresh', () => updateGameBarState('refresh'))
+  ipcMain.handle('gamebar:publish-translations', (_event, lines) => updateGameBarState('replace', Array.isArray(lines) ? lines.map((line) => ({
+    language: String(line?.language || 'AUTO'),
+    text: String(line?.translated || ''),
+  })) : []))
 
   ipcMain.handle('overlay:update', (_event, payload) => {
     overlayPayload = {
@@ -945,18 +968,29 @@ function registerApiHandler() {
     return { ok: true, installed: Boolean(installPath), installPath, isRunning: dotaRunning, isForeground: dotaForeground, identityStatus: 'unavailable' }
   })
 
-  ipcMain.handle('companion:get-state', () => ({
-    ok: true,
-    dotaRunning,
-    dotaForeground,
-    overlayVisible: Boolean(overlayWindow?.isVisible()),
-    overlaySuppressed,
-    settings: overlaySettings,
-    shortcuts: overlayPayload.shortcutStatus || {},
-    liveOcrEnabled: liveOcrAutostartEnabled,
-    overlayVerification: GAME_OVERLAY_VERIFICATION,
-    hotkeyDiagnostic,
-  }))
+  ipcMain.handle('companion:get-state', () => companionStateSnapshot())
+  ipcMain.handle('companion:set-live-translate-enabled', async (_event, enabled) => {
+    liveTranslateEnabled = Boolean(enabled)
+    saveSettings()
+    if (liveTranslateEnabled) {
+      try {
+        updateGameBarState('replace', [])
+        await ensureWorker()
+        log('LIVE_TRANSLATE_ENABLED source=USER_SETTING')
+      } catch (error) {
+        liveTranslateEnabled = false
+        saveSettings()
+        throw error
+      }
+    } else {
+      if (workerWindow && !workerWindow.isDestroyed()) workerWindow.close()
+      overlayPayload.engineStatus = overlayPayload.configured ? '实时翻译已暂停' : '聊天翻译未配置'
+      mainWindow?.webContents.send('companion:worker-state', { configured: overlayPayload.configured, running: false, status: overlayPayload.engineStatus, lastScanAt: Date.now(), lastError: '' })
+      overlayWindow?.webContents.send('overlay:payload', overlayPayload)
+      log('LIVE_TRANSLATE_DISABLED source=USER_SETTING')
+    }
+    return companionStateSnapshot()
+  })
 
   ipcMain.handle('hotkey:get-diagnostic', () => ({ ok: true, diagnostic: hotkeyDiagnostic }))
   ipcMain.handle('hotkey:set-phase', (_event, phase) => {
@@ -985,7 +1019,7 @@ function registerApiHandler() {
     selectorWindow?.close()
     selectorWindow = null
     overlayPayload.configured = Boolean(region)
-    overlayPayload.engineStatus = region ? (liveOcrAutostartEnabled ? 'OCR READY' : 'OCR 自动运行已暂停') : '聊天翻译未配置'
+    overlayPayload.engineStatus = region ? (liveTranslateEnabled ? 'OCR READY' : '实时翻译已暂停') : '聊天翻译未配置'
     workerWindow?.webContents.send('companion:region-changed', region)
     mainWindow?.webContents.send('companion:region-changed', region)
     overlayWindow?.webContents.send('overlay:payload', overlayPayload)
@@ -1027,7 +1061,7 @@ function registerApiHandler() {
       await new Promise((resolve) => setTimeout(resolve, 350))
     }
     try {
-      return await captureDisplay(options.displayId)
+      return await captureDisplay(options.displayId, options.maxWidth)
     } finally {
       if (hideMain && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.show()
@@ -1040,9 +1074,15 @@ function registerApiHandler() {
     const text = String(options.text || '').trim().slice(0, 1200)
     if (!text) return { ok: false, error: '没有可翻译的文字。' }
     const target = String(options.target || 'zh-CN')
+    const provider = options.apiKey ? 'google-cloud' : 'experimental'
+    const cacheKey = `${provider}\u0000${target}\u0000${text.toLocaleLowerCase()}`
+    const cached = translationCache.get(cacheKey)
+    if (cached) return { ...cached, cached: true, elapsedMs: 0 }
+    const startedAt = Date.now()
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 12000)
     try {
+      let result
       if (options.apiKey) {
         const response = await net.fetch(`https://translation.googleapis.com/language/translate/v2?key=${encodeURIComponent(options.apiKey)}`, {
           method: 'POST', signal: controller.signal,
@@ -1052,13 +1092,17 @@ function registerApiHandler() {
         if (!response.ok) throw new Error(`Google Cloud 翻译失败（${response.status}）`)
         const data = await response.json()
         const item = data?.data?.translations?.[0]
-        return { ok: true, translated: item?.translatedText || text, language: item?.detectedSourceLanguage || 'auto', provider: 'google-cloud' }
+        result = { ok: true, translated: item?.translatedText || text, language: item?.detectedSourceLanguage || 'auto', provider }
+      } else {
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(target)}&dt=t&q=${encodeURIComponent(text)}`
+        const response = await net.fetch(url, { signal: controller.signal })
+        if (!response.ok) throw new Error(`在线翻译暂时不可用（${response.status}）`)
+        const data = await response.json()
+        result = { ok: true, translated: (data?.[0] || []).map((item) => item?.[0] || '').join('').trim(), language: data?.[2] || 'auto', provider }
       }
-      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(target)}&dt=t&q=${encodeURIComponent(text)}`
-      const response = await net.fetch(url, { signal: controller.signal })
-      if (!response.ok) throw new Error(`在线翻译暂时不可用（${response.status}）`)
-      const data = await response.json()
-      return { ok: true, translated: (data?.[0] || []).map((item) => item?.[0] || '').join('').trim(), language: data?.[2] || 'auto', provider: 'experimental' }
+      translationCache.set(cacheKey, result)
+      if (translationCache.size > 300) translationCache.delete(translationCache.keys().next().value)
+      return { ...result, cached: false, elapsedMs: Date.now() - startedAt }
     } catch (error) {
       if (error?.name === 'AbortError') return { ok: false, error: '翻译请求超时，请稍后重试。' }
       return { ok: false, error: error instanceof Error ? error.message : '翻译服务暂时不可用。' }

@@ -1,0 +1,28 @@
+import { describe, expect, it } from 'vitest'
+import { createFrameGateState, evaluateFrame, markFrameOcred, signatureDifference } from './imageGate'
+
+const frame = (...values: number[]) => new Uint8Array(values)
+
+describe('OCR image gate', () => {
+  it('requires a stable second sample before the baseline OCR', () => {
+    const first = evaluateFrame(createFrameGateState(), frame(0, 0, 255, 255), 100)
+    expect(first.trigger).toBe(false)
+    const stable = evaluateFrame(first.state, frame(0, 0, 255, 255), 450)
+    expect(stable).toMatchObject({ trigger: true, reason: 'baseline' })
+  })
+
+  it('ignores unchanged frames and triggers after a stable meaningful change', () => {
+    let state = markFrameOcred(createFrameGateState(), frame(0, 0, 0, 0), 1_000)
+    const changed = evaluateFrame(state, frame(255, 0, 0, 0), 2_500)
+    expect(changed.trigger).toBe(false)
+    const stable = evaluateFrame(changed.state, frame(255, 0, 0, 0), 2_850)
+    expect(stable).toMatchObject({ trigger: true, reason: 'changed' })
+  })
+
+  it('uses a slow heartbeat to recover from a missed threshold', () => {
+    const state = markFrameOcred(createFrameGateState(), frame(0, 0), 1_000)
+    const decision = evaluateFrame(state, frame(0, 255), 13_100)
+    expect(decision).toMatchObject({ trigger: true, reason: 'heartbeat' })
+    expect(signatureDifference(frame(0, 0), frame(0, 255))).toBe(0.5)
+  })
+})

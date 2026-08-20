@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('dotaScoutDesktop', {
   runOverlayDiagnosticAction: (action, value) => ipcRenderer.invoke('overlay:diagnostic-action', action, value),
   getDotaStatus: () => ipcRenderer.invoke('dota:get-status'),
   getCompanionState: () => ipcRenderer.invoke('companion:get-state'),
+  setLiveTranslateEnabled: (enabled) => ipcRenderer.invoke('companion:set-live-translate-enabled', enabled),
   getHotkeyDiagnostic: () => ipcRenderer.invoke('hotkey:get-diagnostic'),
   setHotkeyDiagnosticPhase: (phase) => ipcRenderer.invoke('hotkey:set-phase', phase),
   resetHotkeyDiagnostic: () => ipcRenderer.invoke('hotkey:reset-diagnostic'),
@@ -29,6 +30,7 @@ contextBridge.exposeInMainWorld('dotaScoutDesktop', {
   setGameBarVisible: (visible) => ipcRenderer.invoke('gamebar:set-visible', visible),
   setGameBarOpacity: (opacity) => ipcRenderer.invoke('gamebar:set-opacity', opacity),
   refreshGameBarState: () => ipcRenderer.invoke('gamebar:refresh'),
+  publishGameBarTranslations: (lines) => ipcRenderer.invoke('gamebar:publish-translations', lines),
   onGameBarState: (callback) => {
     const listener = (_event, state) => callback(state)
     ipcRenderer.on('gamebar:state', listener)

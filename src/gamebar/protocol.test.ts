@@ -23,4 +23,19 @@ describe('Game Bar bridge protocol', () => {
     const translucent = applyGameBarCommand(hidden, 'opacity', 0.1, 201)
     expect(translucent).toMatchObject({ type: 'state', version: 1, visible: false, opacity: 0.2, sequence: 2, sentAt: 201 })
   })
+
+  it('replaces test content with the latest real translation snapshot', () => {
+    const testState = applyGameBarCommand(createGameBarState(), 'append', { language: 'TH', text: 'test' }, 300)
+    const translated = applyGameBarCommand(testState, 'replace', [
+      { language: 'EN', text: '别打。' },
+      { language: 'ID', text: '先去肉山。' },
+      { language: 'TH', text: '等我。' },
+      { language: 'MS', text: '我有买活。' },
+    ], 301)
+    expect(translated.lines).toEqual([
+      { language: 'ID', text: '先去肉山。' },
+      { language: 'TH', text: '等我。' },
+      { language: 'MS', text: '我有买活。' },
+    ])
+  })
 })

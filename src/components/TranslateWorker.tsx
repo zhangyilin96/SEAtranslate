@@ -1,27 +1,37 @@
 import { useEffect, useRef } from 'react'
-import type { TranslationLine } from '../desktop'
-import { applyDotaGlossary, lineFingerprint, normalizeOcrLine } from '../translate/glossary'
+import type { TranslationLine, WorkerState } from '../desktop'
+import { diffNewChatLines, filterTtlDuplicates, normalizeChatLines } from '../translate/chatLines'
+import { applyDotaGlossary } from '../translate/glossary'
+import { createFrameGateState, evaluateFrame, markFrameOcred } from '../translate/imageGate'
+import { chatLanguageLabel } from '../translate/language'
 import { getOcrWorker } from '../translate/ocr'
-import { cropCapture, readSavedRegion, type SavedCaptureRegion } from '../translate/region'
+import { createRegionFingerprint, cropCapture, readSavedRegion, type SavedCaptureRegion } from '../translate/region'
 
 const API_KEY = 'dota-scout:google-translate-key-v1'
+const PROBE_WIDTH = 512
+const PROBE_INTERVAL_MS = 350
+const BASELINE_TIMEOUT_MS = 1_600
+const IDLE_REPORT_INTERVAL_MS = 3_000
+
+function sleep(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds))
+}
 
 export function TranslateWorker() {
   const foreground = useRef(false)
   const region = useRef<SavedCaptureRegion | null>(readSavedRegion())
   const loopToken = useRef(0)
-  const seen = useRef(new Set<string>())
   const lines = useRef<TranslationLine[]>([])
 
   useEffect(() => {
     let disposed = false
 
-    function report(status: string, running = false, lastError = '') {
-      void window.dotaScoutDesktop?.reportWorkerState({ configured: Boolean(region.current), running, status, lastScanAt: Date.now(), lastError })
+    function report(status: string, running = false, lastError = '', metrics: Partial<WorkerState> = {}) {
+      void window.dotaScoutDesktop?.reportWorkerState({ configured: Boolean(region.current), running, status, lastScanAt: Date.now(), lastError, ...metrics })
       void window.dotaScoutDesktop?.updateOverlay({ configured: Boolean(region.current), engineStatus: status, diagnostic: false })
     }
 
-    async function stop(status: string) {
+    function stop(status: string) {
       loopToken.current += 1
       report(status, false)
     }
@@ -29,65 +39,108 @@ export function TranslateWorker() {
     async function run() {
       if (disposed || !foreground.current || !region.current) return
       const token = ++loopToken.current
+      const startedAt = Date.now()
+      let gate = createFrameGateState()
       let primed = false
-      report('OCR 正在加载', true)
-      try {
-        const worker = await getOcrWorker((message, progress) => report(`OCR · ${message} ${Math.round(progress * 100)}%`, true))
-        while (!disposed && token === loopToken.current && foreground.current && region.current) {
-          const saved = region.current
-          try {
+      let previousCandidates: string[] = []
+      let lastIdleReportAt = 0
+      const seenAt = new Map<string, number>()
+      report('正在监测聊天区域', true)
+
+      while (!disposed && token === loopToken.current && foreground.current && region.current) {
+        const saved = region.current
+        let captureMs = 0
+        try {
+          const probeStartedAt = performance.now()
+          const probe = await window.dotaScoutDesktop?.captureScreen({ displayId: saved.displayId, maxWidth: PROBE_WIDTH })
+          captureMs = Math.round(performance.now() - probeStartedAt)
+          if (!probe?.ok) throw new Error(probe?.error || '聊天区域截图失败')
+          const signature = await createRegionFingerprint(probe.image, saved)
+          const decision = evaluateFrame(gate, signature, Date.now())
+          gate = decision.state
+          const baselineTimeout = !primed && Date.now() - startedAt >= BASELINE_TIMEOUT_MS
+
+          if (decision.trigger || baselineTimeout) {
+            report(decision.reason === 'heartbeat' ? 'OCR 恢复检查' : '检测到聊天变化', true, '', { captureMs })
+            const fullCaptureStartedAt = performance.now()
             const capture = await window.dotaScoutDesktop?.captureScreen({ displayId: saved.displayId })
-            if (!capture?.ok) throw new Error(capture?.error || '截图失败')
+            captureMs += Math.round(performance.now() - fullCaptureStartedAt)
+            if (!capture?.ok) throw new Error(capture?.error || '聊天区域截图失败')
             if (capture.width !== saved.captureWidth || capture.height !== saved.captureHeight) {
               throw new Error(`显示分辨率已变化：已保存 ${saved.captureWidth}×${saved.captureHeight}，当前 ${capture.width}×${capture.height}。请按 Ctrl+Shift+F8 重新选择。`)
             }
+
             const sample = await cropCapture(capture.image, saved)
+            const worker = await getOcrWorker((message, progress) => report(`OCR · ${message} ${Math.round(progress * 100)}%`, true, '', { captureMs }))
+            const ocrStartedAt = performance.now()
             const result = await worker.recognize(sample)
-            const candidates = result.data.text.split(/\r?\n/).map(normalizeOcrLine).filter((line) => line.length >= 2).slice(-8)
+            const ocrMs = Math.round(performance.now() - ocrStartedAt)
+            const ocrAt = Date.now()
+            gate = markFrameOcred(gate, signature, ocrAt)
+            const candidates = normalizeChatLines(result.data.text)
+
             if (!primed) {
-              for (const source of candidates) seen.current.add(lineFingerprint(source))
+              previousCandidates = candidates
               primed = true
+              report(candidates.length ? `实时翻译已启动 · 基线 ${candidates.length} 行` : '实时翻译已启动', true, '', { captureMs, ocrMs, lastOcrAt: ocrAt })
             } else {
-              for (const source of candidates) {
-                const key = lineFingerprint(source)
-                if (!key || seen.current.has(key)) continue
-                seen.current.add(key)
+              const appended = diffNewChatLines(previousCandidates, candidates)
+              previousCandidates = candidates
+              const fresh = filterTtlDuplicates(appended, seenAt, ocrAt)
+              let translateMs = 0
+
+              for (const source of fresh) {
+                const translateStartedAt = performance.now()
                 const translated = await window.dotaScoutDesktop?.translateText({ text: source, target: 'zh-CN', apiKey: localStorage.getItem(API_KEY)?.trim() || undefined })
+                translateMs += Math.round(performance.now() - translateStartedAt)
                 if (!translated?.ok) throw new Error(translated?.error || '翻译失败')
-                const line: TranslationLine = { id: `${Date.now()}-${Math.random()}`, source, translated: applyDotaGlossary(translated.translated, source), language: translated.language, at: Date.now() }
+                if (disposed || token !== loopToken.current || !foreground.current) break
+                const line: TranslationLine = {
+                  id: `${Date.now()}-${Math.random()}`,
+                  source,
+                  translated: applyDotaGlossary(translated.translated, source),
+                  language: chatLanguageLabel(translated.language, source),
+                  at: Date.now(),
+                }
                 lines.current = [...lines.current, line].slice(-3)
                 await window.dotaScoutDesktop?.updateOverlay({ translations: lines.current, configured: true, engineStatus: 'Translate ON', diagnostic: false })
+                await window.dotaScoutDesktop?.publishGameBarTranslations(lines.current)
               }
+
+              const status = fresh.length ? `翻译完成 · 新消息 ${fresh.length} 条` : candidates.length ? '实时翻译中 · 无新消息' : '实时翻译中 · 等待聊天'
+              report(status, true, '', { captureMs, ocrMs, translateMs, lastOcrAt: ocrAt })
             }
-            if (seen.current.size > 300) seen.current = new Set(candidates.map(lineFingerprint))
-            report(candidates.length ? `Translate ON · 本轮 ${candidates.length} 行` : 'Translate ON', true)
-          } catch (error) {
-            const message = error instanceof Error ? error.message : 'OCR 识别失败'
-            report(message, true, message)
+          } else if (Date.now() - lastIdleReportAt >= IDLE_REPORT_INTERVAL_MS) {
+            lastIdleReportAt = Date.now()
+            report('实时翻译中 · 轻量监测', true, '', { captureMs })
           }
-          await new Promise((resolve) => setTimeout(resolve, 1800))
+        } catch (error) {
+          const message = error instanceof Error ? error.message : '实时翻译失败'
+          report(message, true, message, { captureMs })
+          await sleep(1_200)
         }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'OCR 初始化失败'
-        report(message, false, message)
+
+        await sleep(PROBE_INTERVAL_MS)
       }
     }
 
     const removeForeground = window.dotaScoutDesktop?.onForegroundState((state) => {
       foreground.current = state.foreground
       if (state.foreground && region.current) void run()
-      else void stop(region.current ? '等待 Dota 2 前台' : '聊天翻译未配置')
+      else stop(region.current ? '等待 Dota 2 前台' : '聊天翻译未配置')
     })
     const removeRegion = window.dotaScoutDesktop?.onRegionChanged((next) => {
       region.current = next as SavedCaptureRegion | null
-      seen.current.clear()
       loopToken.current += 1
+      lines.current = []
+      void window.dotaScoutDesktop?.updateOverlay({ translations: [], configured: Boolean(region.current), diagnostic: false })
+      void window.dotaScoutDesktop?.publishGameBarTranslations([])
       if (foreground.current && region.current) void run()
-      else report(region.current ? 'OCR READY' : '聊天翻译未配置', false)
+      else report(region.current ? '实时翻译待机' : '聊天翻译未配置', false)
     })
     void window.dotaScoutDesktop?.getCompanionState().then((state) => {
       foreground.current = state.dotaForeground
-      report(region.current ? (state.dotaForeground ? 'OCR 正在启动' : 'OCR READY') : '聊天翻译未配置', state.dotaForeground && Boolean(region.current))
+      report(region.current ? (state.dotaForeground ? '正在启动实时翻译' : '实时翻译待机') : '聊天翻译未配置', state.dotaForeground && Boolean(region.current))
       if (state.dotaForeground && region.current) void run()
     })
 

@@ -50,7 +50,7 @@ export type HotkeyDiagnostic = {
   lastEvent: null | { action: HotkeyAction; accelerator: string; at: string; phase: HotkeyPhase; context: 'desktop' | 'dotaForeground'; dotaForeground: boolean; count: number }
 }
 export type CompanionState = { ok: true; dotaRunning: boolean; dotaForeground: boolean; overlayVisible: boolean; overlaySuppressed: boolean; settings: OverlaySettings; shortcuts: Record<string, boolean>; liveOcrEnabled: boolean; overlayVerification: OverlayVerification; hotkeyDiagnostic: HotkeyDiagnostic }
-export type WorkerState = { configured: boolean; running: boolean; status: string; lastScanAt?: number; lastError?: string }
+export type WorkerState = { configured: boolean; running: boolean; status: string; lastScanAt?: number; lastOcrAt?: number; captureMs?: number; ocrMs?: number; translateMs?: number; lastError?: string }
 export type GameBarLine = { language: string; text: string }
 export type GameBarWidgetState = { type: 'state'; version: 1; sequence: number; sentAt: number; visible: boolean; opacity: number; lines: GameBarLine[] }
 export type GameBarBridgeStatus = {
@@ -82,7 +82,7 @@ type HeroMetadataResult =
   | { ok: false; error: string }
 
 export type ScreenCaptureResult = { ok: true; image: string; width: number; height: number; displayId: string; displayName: string; resolution: string } | { ok: false; error: string }
-type TranslationResult = { ok: true; translated: string; language: string; provider: string } | { ok: false; error: string }
+type TranslationResult = { ok: true; translated: string; language: string; provider: string; cached?: boolean; elapsedMs?: number } | { ok: false; error: string }
 export type DotaStatusResult = { ok: true; installed: boolean; installPath: string | null; isRunning: boolean; isForeground: boolean; identityStatus: 'unavailable' } | { ok: false; error: string }
 
 declare global {
@@ -108,13 +108,15 @@ declare global {
       clearRegion(): Promise<{ ok: boolean }>
       reportWorkerState(state: WorkerState): Promise<{ ok: boolean }>
       finishOutgoing(options: { text?: string; copy?: boolean }): Promise<{ ok: boolean; copied: boolean; sent: false }>
-      captureScreen(options?: { hideMain?: boolean; displayId?: string }): Promise<ScreenCaptureResult>
+      captureScreen(options?: { hideMain?: boolean; displayId?: string; maxWidth?: number }): Promise<ScreenCaptureResult>
       translateText(options: { text: string; target?: string; apiKey?: string }): Promise<TranslationResult>
+      setLiveTranslateEnabled(enabled: boolean): Promise<CompanionState>
       getGameBarState(): Promise<GameBarBridgeResult>
       sendGameBarTestMessage(): Promise<GameBarBridgeResult>
       setGameBarVisible(visible: boolean): Promise<GameBarBridgeResult>
       setGameBarOpacity(opacity: number): Promise<GameBarBridgeResult>
       refreshGameBarState(): Promise<GameBarBridgeResult>
+      publishGameBarTranslations(lines: TranslationLine[]): Promise<GameBarBridgeResult>
       onGameBarState(callback: (state: GameBarBridgeResult) => void): () => void
       onOverlayPayload(callback: (payload: OverlayPayload) => void): () => void
       onOverlaySettings(callback: (settings: OverlaySettings) => void): () => void

@@ -30,6 +30,8 @@ function applyGameBarCommand(current, command, value, now = Date.now()) {
     const line = normalizeLine(value)
     if (!line) throw new Error('Game Bar message text is empty.')
     state.lines = [...state.lines, line].slice(-3)
+  } else if (command === 'replace') {
+    state.lines = Array.isArray(value) ? value.map(normalizeLine).filter(Boolean).slice(-3) : []
   } else if (command === 'visible') {
     state.visible = Boolean(value)
   } else if (command === 'opacity') {
