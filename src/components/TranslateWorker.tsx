@@ -27,6 +27,10 @@ export function TranslateWorker() {
 
   useEffect(() => {
     let disposed = false
+    let gate = createFrameGateState()
+    let primed = false
+    let previousCandidates: string[] = []
+    const seenAt = new Map<string, number>()
 
     function report(status: string, running = false, lastError = '', metrics: Partial<WorkerState> = {}) {
       void window.dotaScoutDesktop?.reportWorkerState({ configured: Boolean(region.current), running, status, lastScanAt: Date.now(), lastError, ...metrics })
@@ -42,20 +46,17 @@ export function TranslateWorker() {
       if (disposed || !foreground.current || !region.current) return
       const token = ++loopToken.current
       const startedAt = Date.now()
-      let gate = createFrameGateState()
-      let primed = false
-      let previousCandidates: string[] = []
       let lastIdleReportAt = 0
       let probeCount = 0
       let ocrCount = 0
       let candidateCount = 0
       let changePercent = 0
       let recognizedPreview: string[] = []
-      const seenAt = new Map<string, number>()
       report('正在监测聊天区域', true)
 
       while (!disposed && token === loopToken.current && foreground.current && region.current) {
         const saved = region.current
+        const active = () => !disposed && token === loopToken.current && foreground.current && region.current === saved
         let captureMs = 0
         try {
           const probeStartedAt = performance.now()
@@ -64,6 +65,7 @@ export function TranslateWorker() {
           captureMs = Math.round(performance.now() - probeStartedAt)
           if (!probe?.ok) throw new Error(probe?.error || '聊天区域截图失败')
           const signature = await createRegionFingerprint(probe.image, saved)
+          if (!active()) return
           const decision = evaluateFrame(gate, signature, Date.now())
           gate = decision.state
           changePercent = Number((decision.ocrDifference * 100).toFixed(2))
@@ -75,6 +77,7 @@ export function TranslateWorker() {
             const capture = await window.dotaScoutDesktop?.captureScreen({ displayId: saved.displayId, maxWidth: OCR_CAPTURE_WIDTH })
             captureMs += Math.round(performance.now() - fullCaptureStartedAt)
             if (!capture?.ok) throw new Error(capture?.error || '聊天区域截图失败')
+            if (!active()) return
             const savedAspect = saved.captureWidth / saved.captureHeight
             const currentAspect = capture.width / capture.height
             if (Math.abs(savedAspect - currentAspect) > 0.02) {
@@ -85,9 +88,12 @@ export function TranslateWorker() {
               cropCapture(capture.image, saved),
               cropCapture(capture.image, saved, false, true),
             ])
+            if (!active()) return
             const worker = await getOcrWorker((message, progress) => report(`OCR · ${message} ${Math.round(progress * 100)}%`, true, '', { captureMs }))
+            if (!active()) return
             const ocrStartedAt = performance.now()
             const result = await worker.recognize(sample, {}, { tsv: true })
+            if (!active()) return
             const ocrAt = Date.now()
             ocrCount += 1
             gate = markFrameOcred(gate, signature, ocrAt)
@@ -95,7 +101,9 @@ export function TranslateWorker() {
             let candidates: OcrChatLine[] = extractChatLinesFromTsv(result.data.tsv || '', colorPixels)
             if (primed && candidates.length === 0) {
               const fallback = await getThaiOcrWorker((message, progress) => report(`泰文 OCR · ${message} ${Math.round(progress * 100)}%`, true, '', { captureMs }))
+              if (!active()) return
               const thaiResult = await fallback.recognize(sample, {}, { tsv: true })
+              if (!active()) return
               candidates = extractChatLinesFromTsv(thaiResult.data.tsv || '', colorPixels)
             }
             const ocrMs = Math.round(performance.now() - ocrStartedAt)
@@ -174,6 +182,10 @@ export function TranslateWorker() {
     const removeRegion = window.dotaScoutDesktop?.onRegionChanged((next) => {
       region.current = next as SavedCaptureRegion | null
       loopToken.current += 1
+      gate = createFrameGateState()
+      primed = false
+      previousCandidates = []
+      seenAt.clear()
       lines.current = []
       void window.dotaScoutDesktop?.updateOverlay({ translations: [], configured: Boolean(region.current), diagnostic: false })
       void window.dotaScoutDesktop?.publishGameBarTranslations([])
