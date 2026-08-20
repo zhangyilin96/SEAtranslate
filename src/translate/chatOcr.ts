@@ -118,7 +118,10 @@ export function extractChatLinesFromTsv(tsv: string, image: PixelImage): OcrChat
         .map((word) => ({ text: cleanSpeaker(word.text), rawText: word.rawText, confidence: word.confidence }))
         .find((item) => /[\p{L}\p{N}]/u.test(item.text) && !/^[\[({<]/.test(item.rawText) && !/[:：]/.test(item.rawText))?.text || ''
       : ''
-    const speaker = structuralSpeaker || colorSpeaker
+    // The first colored token is the player id. Dota's colored clan/location
+    // tag can lose its opening bracket in OCR (for example "X/F"), so it must
+    // not override the earlier player id merely because it sits by the colon.
+    const speaker = colorSpeaker || structuralSpeaker
 
     let message = ''
     if (separatorIndex >= 0) {

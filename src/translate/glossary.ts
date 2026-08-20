@@ -32,12 +32,38 @@ export function lineFingerprint(value: string) {
 }
 
 const quickCalls: Array<[RegExp, string]> = [
-  [/^(?:back|b)$/i, '撤'],
-  [/^(?:w8|wait|waitme)$/i, '等一下'],
+  [/^(?:back|b|retreat)$/i, '撤'],
+  [/^(?:w8|wait|waitme|hold)$/i, '等一下'],
   [/^(?:rs|rosh|roshan)$/i, '肉山'],
   [/^(?:bb|buyback)$/i, '买活'],
   [/^(?:cant|cannot)$/i, '不能'],
   [/^scant$/i, '不能'],
+  [/^(?:nodam|nodmg|nodamage)$/i, '没伤害'],
+  [/^(?:nomana|oom)$/i, '没蓝'],
+  [/^(?:noheal|noheals)$/i, '没治疗'],
+  [/^(?:nostun|nodisable)$/i, '没控制'],
+  [/^novision$/i, '没视野'],
+  [/^(?:noward|nowards)$/i, '没眼'],
+  [/^notp$/i, '没TP'],
+  [/^(?:nobb|nobuyback)$/i, '没买活'],
+  [/^(?:stfu|shutup)$/i, '闭嘴'],
+  [/^wtf$/i, '什么鬼？'],
+  [/^what$/i, '什么？'],
+  [/^(?:tooslow|2slow)$/i, '太慢了'],
+  [/^as+h[o0]+(?:le)?$/i, '蠢货'],
+  [/^shit$/i, '靠'],
+  [/^(?:dontfight|nofight)$/i, '别打'],
+  [/^(?:def|defend)$/i, '防守'],
+  [/^group$/i, '集合'],
+  [/^help$/i, '帮我'],
+  [/^(?:miss|missing|mia)$/i, '人不见了'],
+  [/^smoke$/i, '开雾'],
+  [/^(?:ward|wards)$/i, '插眼'],
+  [/^deward$/i, '排眼'],
+  [/^sentry$/i, '真眼'],
+  [/^push$/i, '推'],
+  [/^fight$/i, '打'],
+  [/^farm$/i, '刷钱'],
   [/^no$/i, '不'],
   [/^(?:yes|yep)$/i, '好'],
   [/^gg$/i, 'GG'],
@@ -45,11 +71,21 @@ const quickCalls: Array<[RegExp, string]> = [
 
 export function translateDotaCall(source: string) {
   const normalized = lineFingerprint(source)
+  const question = /[?？]/.test(source) ? '？' : ''
   if (/^(?:go){1,5}$/i.test(normalized)) return '上'.repeat(normalized.length / 2)
   const exact = quickCalls.find(([pattern]) => pattern.test(normalized))?.[1]
-  if (exact) return /[?？]/.test(source) && /^(?:rs|rosh|roshan)$/i.test(normalized) ? `${exact}？` : exact
+  if (exact) return question && /^(?:rs|rosh|roshan)$/i.test(normalized) ? `${exact}${question}` : exact
   if (/^g[go0e]{1,9}$/i.test(normalized) && /[o0]/i.test(normalized)) return '上'.repeat(Math.max(1, Math.min(5, Math.floor(normalized.length / 2))))
   if (/^w(?:8+|ait|a1t|es)$/i.test(normalized)) return '等一下'
+  if (/^(?:lets|letus|go|do|take|kill)(?:rs|rosh|roshan)$/i.test(normalized)) return `打肉山${question}`
+  const laneCall = /^(push|go|def|defend)(top|mid|bot|bottom)$/i.exec(normalized)
+  if (laneCall) {
+    const action = laneCall[1].toLocaleLowerCase()
+    const lane = ({ top: '上路', mid: '中路', bot: '下路', bottom: '下路' } as const)[laneCall[2].toLocaleLowerCase() as 'top' | 'mid' | 'bot' | 'bottom']
+    return `${action === 'push' ? '推' : action === 'go' ? '去' : '守'}${lane}${question}`
+  }
+  const bkbTiming = /^bkb(?:in)?(\d{1,3})(?:s|sec|seconds)?$/i.exec(normalized)
+  if (bkbTiming) return `BKB还有${bkbTiming[1]}秒${question}`
   return null
 }
 

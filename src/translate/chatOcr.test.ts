@@ -103,4 +103,20 @@ describe('Dota chat color-aware OCR extraction', () => {
     ])
     expect(extractChatLinesFromTsv(tsv, image)).toEqual([{ speaker: 'kiseki', message: 'wtf' }])
   })
+
+  it('does not mistake a colored tag with a missing bracket for the player id', () => {
+    const tsv = [
+      wordTsv('kiseki', 1, 2, 46),
+      wordTsv('X/F', 2, 58, 28),
+      wordTsv(':', 3, 93, 3),
+      wordTsv('stfu', 4, 105, 30),
+    ].join('\n')
+    const image = imageWithWords([
+      { left: 2, width: 46, rgb: [35, 125, 245] },
+      { left: 58, width: 28, rgb: [35, 125, 245] },
+      { left: 93, width: 3, rgb: [245, 245, 235] },
+      { left: 105, width: 30, rgb: [245, 245, 235] },
+    ])
+    expect(extractChatLinesFromTsv(tsv, image)).toEqual([{ speaker: 'kiseki', message: 'stfu' }])
+  })
 })

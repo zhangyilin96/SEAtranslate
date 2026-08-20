@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { TranslationLine, WorkerState } from '../desktop'
-import { diffNewChatLines, filterTtlDuplicates } from '../translate/chatLines'
+import { diffNewChatLines, filterTtlDuplicates, rememberObservedChatLines } from '../translate/chatLines'
 import { extractChatLinesFromTsv, type OcrChatLine } from '../translate/chatOcr'
 import { applyDotaGlossary, translateDotaCall } from '../translate/glossary'
 import { createFrameGateState, evaluateFrame, markFrameOcred } from '../translate/imageGate'
@@ -113,12 +113,16 @@ export function TranslateWorker() {
 
             if (!primed) {
               previousCandidates = currentMessages
+              rememberObservedChatLines(currentMessages, seenAt, ocrAt)
               primed = true
               report(candidates.length ? `实时翻译已启动 · 基线 ${candidates.length} 行 · OCR #${ocrCount}` : `实时翻译已启动 · OCR #${ocrCount}`, true, '', { captureMs, ocrMs, lastOcrAt: ocrAt, probeCount, ocrCount, candidateCount, changePercent, recognizedPreview })
             } else {
               const appended = diffNewChatLines(previousCandidates, currentMessages).slice(-3)
-              previousCandidates = currentMessages
               const fresh = filterTtlDuplicates(appended, seenAt, ocrAt)
+              if (currentMessages.length) {
+                previousCandidates = currentMessages
+                rememberObservedChatLines(currentMessages, seenAt, ocrAt)
+              }
               let translateMs = 0
 
               if (fresh.length) {
