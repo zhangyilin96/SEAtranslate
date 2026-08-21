@@ -67,7 +67,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build-gamebar-widget-poc.ps1
 
 ## 后续唯一允许的主线
 
-严格执行 `NEXT_STEPS.md`：当前唯一任务是让用户运行 `Dota Scout Live Translate Accuracy Fix.exe`，重新打开已升级的 Widget 0.2.3.0，框选完整聊天行并实测 `go / gogo / gogogo / back / rs? / cant`。先确认 Widget 只显示正确说话人与中文，再记录 OCR、Translate 延迟和鼠标体感；得到结果前不要扩展其他功能。
+严格执行 `NEXT_STEPS.md`：本地 OCR 诊断采样和连续 2–3 帧共识已经接入，当前唯一任务是在真实 Dota 中用 `--ocr-diagnostics` 采集并标注指定短句，确认稳定发布、真实重复 `back`、`farm → 刷钱`、Widget 最近三条、端到端延迟和鼠标体感。得到同一批真实样本的 Tesseract 基线之前，不扩词典、不替换正式 OCR 引擎，也不扩展其他产品功能。
 
 ## 可选研究任务
 

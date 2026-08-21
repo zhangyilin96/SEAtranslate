@@ -24,6 +24,8 @@ function imageWithWords(colors: Array<{ left: number; width: number; rgb: [numbe
 }
 
 describe('Dota chat color-aware OCR extraction', () => {
+  const textOnly = (lines: ReturnType<typeof extractChatLinesFromTsv>) => lines.map(({ speaker, message }) => ({ speaker, message }))
+
   it('keeps a colored player id but translates only the white message', () => {
     const tsv = [
       wordTsv('[ALLY]', 1, 2, 14),
@@ -37,7 +39,8 @@ describe('Dota chat color-aware OCR extraction', () => {
       { left: 50, width: 18, rgb: [35, 125, 245] },
       { left: 76, width: 18, rgb: [245, 245, 235] },
     ])
-    expect(extractChatLinesFromTsv(tsv, image)).toEqual([{ speaker: 'Kiseki', message: 'back' }])
+    expect(textOnly(extractChatLinesFromTsv(tsv, image))).toEqual([{ speaker: 'Kiseki', message: 'back' }])
+    expect(extractChatLinesFromTsv(tsv, image)[0]).toMatchObject({ top: 2, height: 12, confidence: 90, speakerConfidence: 90 })
   })
 
   it.each([
@@ -55,7 +58,7 @@ describe('Dota chat color-aware OCR extraction', () => {
       { left: 50, width: 18, rgb },
       { left: 76, width: 18, rgb: [245, 245, 235] },
     ])
-    expect(extractChatLinesFromTsv(tsv, image)).toEqual([{ speaker: 'Player', message: 'back' }])
+    expect(textOnly(extractChatLinesFromTsv(tsv, image))).toEqual([{ speaker: 'Player', message: 'back' }])
   })
 
   it('supports a message-only crop without inventing a speaker', () => {
@@ -64,7 +67,7 @@ describe('Dota chat color-aware OCR extraction', () => {
       { left: 5, width: 20, rgb: [245, 245, 235] },
       { left: 30, width: 22, rgb: [245, 245, 235] },
     ])
-    expect(extractChatLinesFromTsv(tsv, image)).toEqual([{ speaker: '', message: 'wait rosh' }])
+    expect(textOnly(extractChatLinesFromTsv(tsv, image))).toEqual([{ speaker: '', message: 'wait rosh' }])
   })
 
   it('uses repeated rows to correct a one-character OCR error in the player id', () => {
@@ -101,7 +104,7 @@ describe('Dota chat color-aware OCR extraction', () => {
       { left: 119, width: 24, rgb: [245, 245, 235] },
       { left: 283, width: 40, rgb: [245, 245, 235] },
     ])
-    expect(extractChatLinesFromTsv(tsv, image)).toEqual([{ speaker: 'kiseki', message: 'wtf' }])
+    expect(textOnly(extractChatLinesFromTsv(tsv, image))).toEqual([{ speaker: 'kiseki', message: 'wtf' }])
   })
 
   it('does not mistake a colored tag with a missing bracket for the player id', () => {
@@ -117,6 +120,6 @@ describe('Dota chat color-aware OCR extraction', () => {
       { left: 93, width: 3, rgb: [245, 245, 235] },
       { left: 105, width: 30, rgb: [245, 245, 235] },
     ])
-    expect(extractChatLinesFromTsv(tsv, image)).toEqual([{ speaker: 'kiseki', message: 'stfu' }])
+    expect(textOnly(extractChatLinesFromTsv(tsv, image))).toEqual([{ speaker: 'kiseki', message: 'stfu' }])
   })
 })

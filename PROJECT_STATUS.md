@@ -1,6 +1,6 @@
 # Dota Scout / SEA Translate 项目状态
 
-> 更新：2026-08-20
+> 更新：2026-08-21
 >
 > 当前主线：Dota 2 SEA 实时聊天翻译助手（Live Translate）
 >
@@ -109,6 +109,14 @@ Widget 0.2.4.0 候选另外在页面导航和窗口关闭时主动释放管道�
 英雄词典已独立为 `src/translate/heroGlossary.ts`，覆盖 Valve 当前 127 名英雄的完整英文名，并生成无冲突首字母缩写、补充常见 SEA/Dota 别名。冲突缩写（例如 `ES`、`VS`、`BM`）不会自动猜测，以免把一个英雄稳定翻错成另一个英雄。
 
 当前产品仍不是 Production Ready：截图中的 `y go`、`fk u lc` 等结果说明单帧 OCR 仍会丢字或串字。下一阶段不继续无上限扩词典，唯一任务是建立本地真实聊天样本集，并实现按行位置、置信度和连续 2–3 帧投票的 OCR 共识层；之后用同一批样本对比现有 Tesseract、Windows OCR 和候选轻量本地 OCR 的准确率与延迟。详细顺序见 `NEXT_STEPS.md`。
+
+### 2026-08-21 本地 OCR 诊断与多帧共识
+
+已加入显式启用的本机 OCR 诊断采样。使用 `--ocr-diagnostics` 启动时，每轮实际 OCR 会在应用数据目录保存原始彩色裁剪、Tesseract 预处理图、完整 TSV、最终候选 JSON 和可选人工期望文本；普通启动不落盘。仓库内 `ocr-diagnostics/` 已忽略，聊天截图和玩家信息不得提交。
+
+聊天候选现保留行纵向位置、消息词置信度、说话人置信度和单词框。新增共识层使用纵向位置、近似说话人、编辑距离、词置信度和受限 Dota 本地语义，在连续 2–3 帧中选择候选；两帧冲突时等待第三帧多数结果。高置信度且能由有序滚动证明为新增的尾行保留首帧快速路径。单帧低置信噪声不会提交为当前聊天窗口，低置信结果也不会替换已提交的高置信行。
+
+自动测试现为 73 项，覆盖 `back / back? / farm / need farm / gogogo / stfu / no dam / lets rs / focus pa / am missing`、单字符抖动、行消失后重现、真实重复 `back`、聊天滚动、单帧低置信错误、单帧不兼容结果、三帧多数共识和玩家名/战队标签分离；TypeScript production build 通过。真实 Dota 的准确率、额外延迟与鼠标体感仍必须用本机诊断样本验收，尚不得标记 Production Ready，也尚未决定替换 Tesseract。
 
 ## Overlay 技术决策
 

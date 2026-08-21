@@ -2,7 +2,16 @@ import { normalizeOcrLine } from './glossary'
 import { isNearDuplicate } from './chatLines'
 
 export type PixelImage = { data: Uint8ClampedArray; width: number; height: number }
-export type OcrChatLine = { speaker: string; message: string }
+export type OcrWordEvidence = { text: string; confidence: number; left: number; top: number; width: number; height: number }
+export type OcrChatLine = {
+  speaker: string
+  message: string
+  top: number
+  height: number
+  confidence: number
+  speakerConfidence: number
+  words: OcrWordEvidence[]
+}
 
 type MeasuredWord = OcrWord & { playerColor: number; light: number; lastPlayerColorX: number }
 
@@ -78,18 +87,28 @@ function speakersLikelySame(left: string, right: string) {
 }
 
 function contiguousMessageWords(words: MeasuredWord[], initialRight: number) {
-  const accepted: string[] = []
+  const accepted: MeasuredWord[] = []
   let previousRight = initialRight
   let previousHeight = words[0]?.height || 0
   for (const item of words) {
     const gap = item.left - previousRight
     const maximumGap = Math.max(24, Math.min(90, Math.max(previousHeight, item.height) * 2.2))
     if (gap > maximumGap) break
-    if (item.light >= 0.06) accepted.push(item.text)
+    if (item.light >= 0.06) accepted.push(item)
     previousRight = Math.max(previousRight, item.left + item.width)
     previousHeight = item.height
   }
   return accepted
+}
+
+function wordEvidence(word: OcrWord, text = word.text): OcrWordEvidence {
+  return { text, confidence: word.confidence, left: word.left, top: word.top, width: word.width, height: word.height }
+}
+
+function weightedConfidence(words: OcrWordEvidence[]) {
+  const totalWeight = words.reduce((total, word) => total + Math.max(1, [...word.text].length), 0)
+  if (!totalWeight) return 0
+  return Number((words.reduce((total, word) => total + word.confidence * Math.max(1, [...word.text].length), 0) / totalWeight).toFixed(1))
 }
 
 export function extractChatLinesFromTsv(tsv: string, image: PixelImage): OcrChatLine[] {
@@ -111,42 +130,56 @@ export function extractChatLinesFromTsv(tsv: string, image: PixelImage): OcrChat
       .filter((item) => /[\p{L}\p{N}]/u.test(item.text))
       .filter((item) => !/^[\[({<]/.test(item.rawText))
       .filter((item) => item.left <= image.width * .45)
-      .sort((left, right) => left.left - right.left || right.confidence - left.confidence)[0]?.text || ''
+      .sort((left, right) => left.left - right.left || right.confidence - left.confidence)[0]
     const structuralSpeaker = separatorIndex > 0
       ? [...measured.slice(0, separatorIndex)]
         .reverse()
         .map((word) => ({ text: cleanSpeaker(word.text), rawText: word.rawText, confidence: word.confidence }))
-        .find((item) => /[\p{L}\p{N}]/u.test(item.text) && !/^[\[({<]/.test(item.rawText) && !/[:：]/.test(item.rawText))?.text || ''
+        .find((item) => /[\p{L}\p{N}]/u.test(item.text) && !/^[\[({<]/.test(item.rawText) && !/[:：]/.test(item.rawText))
       : ''
     // The first colored token is the player id. Dota's colored clan/location
     // tag can lose its opening bracket in OCR (for example "X/F"), so it must
     // not override the earlier player id merely because it sits by the colon.
-    const speaker = colorSpeaker || structuralSpeaker
+    const speakerCandidate = colorSpeaker || structuralSpeaker
+    const speaker = speakerCandidate?.text || ''
 
     let message = ''
+    let messageWords: OcrWordEvidence[] = []
     if (separatorIndex >= 0) {
       const separatorWord = measured[separatorIndex]
-      const suffix = separatorWord.rawText.split(/[:：]/).at(-1) || ''
-      message = normalizeOcrLine([
-        suffix,
-        ...contiguousMessageWords(measured.slice(separatorIndex + 1), separatorWord.left + separatorWord.width),
-      ].join(' '))
+      const suffix = normalizeOcrLine(separatorWord.rawText.split(/[:：]/).at(-1) || '')
+      messageWords = [
+        ...(suffix ? [wordEvidence(separatorWord, suffix)] : []),
+        ...contiguousMessageWords(measured.slice(separatorIndex + 1), separatorWord.left + separatorWord.width).map((word) => wordEvidence(word)),
+      ]
+      message = normalizeOcrLine(messageWords.map((word) => word.text).join(' '))
     } else if (lastPlayerColorX >= 0) {
-      message = normalizeOcrLine(measured
+      const selected = measured
         .filter((item) => item.left + item.width / 2 > lastPlayerColorX + 2 && item.light >= 0.06 && item.playerColor < 0.035)
-        .map((item) => item.text)
-        .join(' '))
+      messageWords = selected.map((word) => wordEvidence(word))
+      message = normalizeOcrLine(messageWords.map((word) => word.text).join(' '))
     } else if (!hasPlayerColorText) {
       const wholeLine = normalizeOcrLine(measured.map((word) => word.text).join(' '))
       const separator = Math.max(wholeLine.lastIndexOf(':'), wholeLine.lastIndexOf('：'))
-      message = separator >= 0
-        ? normalizeOcrLine(wholeLine.slice(separator + 1))
-        : normalizeOcrLine(measured.filter((item) => item.light >= 0.025 && item.confidence >= 25).map((item) => item.text).join(' '))
+      const selected = measured.filter((item) => item.light >= 0.025 && item.confidence >= 25)
+      message = separator >= 0 ? normalizeOcrLine(wholeLine.slice(separator + 1)) : normalizeOcrLine(selected.map((item) => item.text).join(' '))
+      messageWords = selected
+        .filter((item) => message.includes(item.text))
+        .map((word) => wordEvidence(word))
     }
     const speakerLength = [...speaker].length
     const plausibleSpeaker = /^[a-z0-9]+$/i.test(speaker) ? speakerLength >= 3 : speakerLength >= 2
-    if (plausibleSpeaker && message.length >= 2) lines.push({ speaker, message })
-    else if (!hasPlayerColorText && message.length >= 2) lines.push({ speaker: '', message })
+    const top = Math.min(...measured.map((word) => word.top))
+    const bottom = Math.max(...measured.map((word) => word.top + word.height))
+    const evidence = {
+      message,
+      top,
+      height: Math.max(1, bottom - top),
+      confidence: weightedConfidence(messageWords),
+      words: messageWords,
+    }
+    if (plausibleSpeaker && message.length >= 2) lines.push({ speaker, speakerConfidence: speakerCandidate?.confidence || 0, ...evidence })
+    else if (!hasPlayerColorText && message.length >= 2) lines.push({ speaker: '', speakerConfidence: 0, ...evidence })
   }
   const speakerFrequency = new Map<string, number>()
   for (const { speaker } of lines) if (speaker) speakerFrequency.set(speaker, (speakerFrequency.get(speaker) || 0) + 1)

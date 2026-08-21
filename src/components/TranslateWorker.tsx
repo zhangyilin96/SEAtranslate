@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react'
 import type { TranslationLine, WorkerState } from '../desktop'
-import { diffChatLines, filterTtlDuplicates, rememberObservedChatLines } from '../translate/chatLines'
 import { extractChatLinesFromTsv, type OcrChatLine } from '../translate/chatOcr'
 import { applyDotaGlossary, translateDotaCall } from '../translate/glossary'
 import { createFrameGateState, evaluateFrame, markFrameOcred } from '../translate/imageGate'
 import { chatLanguageLabel, detectChatLanguage, languageCodeForProvider } from '../translate/language'
+import { advanceOcrConsensus, createOcrConsensusState } from '../translate/ocrConsensus'
 import { getOcrWorker, getThaiOcrWorker } from '../translate/ocr'
 import { createRegionFingerprint, cropCapture, readImagePixels, readSavedRegion, type SavedCaptureRegion } from '../translate/region'
 
@@ -12,6 +12,7 @@ const API_KEY = 'dota-scout:google-translate-key-v1'
 const PROBE_WIDTH = 512
 const OCR_CAPTURE_WIDTH = 1920
 const PROBE_INTERVAL_MS = 400
+const CONSENSUS_FRAME_INTERVAL_MS = 320
 const BASELINE_TIMEOUT_MS = 1_600
 const IDLE_REPORT_INTERVAL_MS = 3_000
 
@@ -28,10 +29,9 @@ export function TranslateWorker() {
   useEffect(() => {
     let disposed = false
     let gate = createFrameGateState()
-    let primed = false
+    let consensus = createOcrConsensusState()
+    let consensusFollowUp = false
     let diagnosticsEnabled = false
-    let previousCandidates: string[] = []
-    const seenAt = new Map<string, number>()
 
     function report(status: string, running = false, lastError = '', metrics: Partial<WorkerState> = {}) {
       void window.dotaScoutDesktop?.reportWorkerState({ configured: Boolean(region.current), running, status, lastScanAt: Date.now(), lastError, ...metrics })
@@ -46,6 +46,7 @@ export function TranslateWorker() {
     async function run() {
       if (disposed || !foreground.current || !region.current) return
       diagnosticsEnabled = diagnosticsEnabled || Boolean((await window.dotaScoutDesktop?.getOcrDiagnosticState())?.enabled)
+      if (disposed || !foreground.current || !region.current) return
       const token = ++loopToken.current
       const startedAt = Date.now()
       let lastIdleReportAt = 0
@@ -71,10 +72,11 @@ export function TranslateWorker() {
           const decision = evaluateFrame(gate, signature, Date.now())
           gate = decision.state
           changePercent = Number((decision.ocrDifference * 100).toFixed(2))
-          const baselineTimeout = !primed && Date.now() - startedAt >= BASELINE_TIMEOUT_MS
+          const baselineTimeout = !consensus.primed && Date.now() - startedAt >= BASELINE_TIMEOUT_MS
+          const followUpDue = consensusFollowUp && gate.lastOcrAt > 0 && Date.now() - gate.lastOcrAt >= CONSENSUS_FRAME_INTERVAL_MS
 
-          if (decision.trigger || baselineTimeout) {
-            report(decision.reason === 'heartbeat' ? 'OCR 恢复检查' : '检测到聊天变化', true, '', { captureMs, probeCount, ocrCount, candidateCount, changePercent })
+          if (decision.trigger || baselineTimeout || followUpDue) {
+            report(followUpDue ? 'OCR 共识补帧' : decision.reason === 'heartbeat' ? 'OCR 恢复检查' : '检测到聊天变化', true, '', { captureMs, probeCount, ocrCount, candidateCount, changePercent })
             const fullCaptureStartedAt = performance.now()
             const capture = await window.dotaScoutDesktop?.captureScreen({ displayId: saved.displayId, maxWidth: OCR_CAPTURE_WIDTH })
             captureMs += Math.round(performance.now() - fullCaptureStartedAt)
@@ -103,7 +105,7 @@ export function TranslateWorker() {
             let diagnosticTsv = result.data.tsv || ''
             let diagnosticEngine = 'tesseract.js:eng'
             let candidates: OcrChatLine[] = extractChatLinesFromTsv(diagnosticTsv, colorPixels)
-            if (primed && candidates.length === 0) {
+            if (consensus.primed && candidates.length === 0) {
               const fallback = await getThaiOcrWorker((message, progress) => report(`泰文 OCR · ${message} ${Math.round(progress * 100)}%`, true, '', { captureMs }))
               if (!active()) return
               const thaiResult = await fallback.recognize(sample, {}, { tsv: true })
@@ -113,7 +115,7 @@ export function TranslateWorker() {
               candidates = extractChatLinesFromTsv(diagnosticTsv, colorPixels)
             }
             if (diagnosticsEnabled) {
-              void window.dotaScoutDesktop?.saveOcrDiagnostic({
+              const save = window.dotaScoutDesktop?.saveOcrDiagnostic({
                 capturedAt: ocrAt,
                 originalImage: colorSample,
                 preprocessedImage: sample,
@@ -121,35 +123,28 @@ export function TranslateWorker() {
                 candidates,
                 engine: diagnosticEngine,
               })
+              if (save) void save.catch(() => undefined)
             }
             const ocrMs = Math.round(performance.now() - ocrStartedAt)
             candidateCount = candidates.length
             recognizedPreview = candidates.slice(-3).map(({ speaker, message }) => `${speaker ? `${speaker}: ` : ''}${message}`)
-            const currentMessages = candidates.map(({ message }) => message)
+            const wasPrimed = consensus.primed
+            const consensusDecision = advanceOcrConsensus(consensus, candidates, ocrAt)
+            consensus = consensusDecision.state
+            consensusFollowUp = consensusDecision.needsFollowUp
 
-            if (!primed) {
-              previousCandidates = currentMessages
-              rememberObservedChatLines(currentMessages, seenAt, ocrAt)
-              primed = true
-              report(candidates.length ? `实时翻译已启动 · 基线 ${candidates.length} 行 · OCR #${ocrCount}` : `实时翻译已启动 · OCR #${ocrCount}`, true, '', { captureMs, ocrMs, lastOcrAt: ocrAt, probeCount, ocrCount, candidateCount, changePercent, recognizedPreview })
+            if (!consensus.primed) {
+              report(`正在建立 OCR 共识基线 · ${consensus.pendingAttempts}/3 帧 · OCR #${ocrCount}`, true, '', { captureMs, ocrMs, lastOcrAt: ocrAt, probeCount, ocrCount, candidateCount, changePercent, recognizedPreview })
+            } else if (!wasPrimed) {
+              report(consensus.committed.length ? `实时翻译已启动 · 共识基线 ${consensus.committed.length} 行 · OCR #${ocrCount}` : `实时翻译已启动 · OCR #${ocrCount}`, true, '', { captureMs, ocrMs, lastOcrAt: ocrAt, probeCount, ocrCount, candidateCount, changePercent, recognizedPreview })
             } else {
-              const difference = diffChatLines(previousCandidates, currentMessages)
-              const appended = difference.lines.slice(-3)
-              // A matched scrolling overlap proves that the tail is a newly
-              // appended chat row. Allow a player to repeat a real command
-              // such as "back"; TTL remains the fallback for unordered OCR
-              // fragments and baseline rows that disappear/reappear.
-              const fresh = difference.orderedAppend ? appended : filterTtlDuplicates(appended, seenAt, ocrAt)
-              if (currentMessages.length) {
-                previousCandidates = currentMessages
-                rememberObservedChatLines(currentMessages, seenAt, ocrAt)
-              }
+              const fresh = consensusDecision.publish.slice(-3)
               let translateMs = 0
 
               if (fresh.length) {
                 const translateStartedAt = performance.now()
-                const translatedLines = await Promise.all(fresh.map(async (source): Promise<TranslationLine> => {
-                  const speaker = [...candidates].reverse().find((candidate) => candidate.message === source)?.speaker || ''
+                const translatedLines = await Promise.all(fresh.map(async (candidate): Promise<TranslationLine> => {
+                  const source = candidate.message
                   const detectedBeforeTranslation = detectChatLanguage(source)
                   const quickTranslation = translateDotaCall(source)
                   let translatedText = quickTranslation
@@ -171,7 +166,7 @@ export function TranslateWorker() {
                     translated: applyDotaGlossary(translatedText || source, source),
                     language: detectedBeforeTranslation === 'AUTO' ? chatLanguageLabel(providerLanguage, source) : detectedBeforeTranslation,
                     at: Date.now(),
-                    speaker,
+                    speaker: candidate.speaker,
                   }
                 }))
                 translateMs = Math.round(performance.now() - translateStartedAt)
@@ -185,7 +180,11 @@ export function TranslateWorker() {
                 }
               }
 
-              const status = fresh.length ? `翻译完成 · 新消息 ${fresh.length} 条 · OCR #${ocrCount}` : candidates.length ? `实时翻译中 · 识别 ${candidates.length} 行 · OCR #${ocrCount}` : `实时翻译中 · 等待聊天 · OCR #${ocrCount}`
+              const status = fresh.length
+                ? `翻译完成 · 新消息 ${fresh.length} 条${consensusDecision.fastPath ? ' · 快速路径' : ' · 多帧共识'} · OCR #${ocrCount}`
+                : consensusFollowUp
+                  ? `OCR 共识采样 · ${consensus.pendingAttempts}/3 帧 · OCR #${ocrCount}`
+                  : candidates.length ? `实时翻译中 · 识别 ${candidates.length} 行 · OCR #${ocrCount}` : `实时翻译中 · 等待聊天 · OCR #${ocrCount}`
               report(status, true, '', { captureMs, ocrMs, translateMs, lastOcrAt: ocrAt, probeCount, ocrCount, candidateCount, changePercent, recognizedPreview })
             }
           } else if (Date.now() - lastIdleReportAt >= IDLE_REPORT_INTERVAL_MS) {
@@ -211,9 +210,8 @@ export function TranslateWorker() {
       region.current = next as SavedCaptureRegion | null
       loopToken.current += 1
       gate = createFrameGateState()
-      primed = false
-      previousCandidates = []
-      seenAt.clear()
+      consensus = createOcrConsensusState()
+      consensusFollowUp = false
       lines.current = []
       void window.dotaScoutDesktop?.updateOverlay({ translations: [], configured: Boolean(region.current), diagnostic: false })
       void window.dotaScoutDesktop?.publishGameBarTranslations([])
