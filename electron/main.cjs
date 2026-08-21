@@ -21,6 +21,8 @@ const GAME_OVERLAY_VERIFICATION = {
 }
 const isSmokeTest = process.argv.includes('--smoke-test')
 let liveTranslateEnabled = process.env.DOTA_SCOUT_ENABLE_LIVE_OCR === '1'
+const ocrDiagnosticsEnabled = process.argv.includes('--ocr-diagnostics') || process.env.DOTA_SCOUT_OCR_DIAGNOSTICS === '1'
+const ocrDiagnosticRootOverride = String(process.env.DOTA_SCOUT_OCR_DIAGNOSTIC_DIR || '').trim()
 const DOTA_PROCESS_POLL_INTERVAL_MS = 15_000
 const liveProbePath = process.env.DOTA_SCOUT_LIVE_PROBE_OUTPUT || ''
 const liveProbeScreenshotPath = process.env.DOTA_SCOUT_LIVE_PROBE_SCREENSHOT || ''
@@ -110,6 +112,7 @@ let startupErrorShown = false
 let heroMetadataCache = null
 let translationCache = new Map()
 let lastLoggedWorkerOcrCount = -1
+let ocrDiagnosticSequence = 0
 let overlayPayload = { reports: [], translations: [], diagnostic: false, configured: false, engineStatus: '等待 Dota 2', dotaForeground: false }
 let overlaySettings = { opacity: 0.9, position: 'top-right', fontSize: 15, collapseDelay: 6500, showOriginal: false }
 let hotkeyDiagnostic = {
@@ -556,6 +559,57 @@ function writeCaptureDataUrl(filePath, dataUrl) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
   const comma = dataUrl.indexOf(',')
   fs.writeFileSync(filePath, Buffer.from(dataUrl.slice(comma + 1), 'base64'))
+}
+
+function ocrDiagnosticRoot() {
+  return ocrDiagnosticRootOverride
+    ? path.resolve(ocrDiagnosticRootOverride)
+    : path.join(app.getPath('userData'), 'ocr-diagnostics')
+}
+
+function decodePngDataUrl(value, label) {
+  const dataUrl = String(value || '')
+  if (!dataUrl.startsWith('data:image/png;base64,')) throw new Error(`${label}不是 PNG data URL。`)
+  const encoded = dataUrl.slice(dataUrl.indexOf(',') + 1)
+  if (encoded.length > 32_000_000) throw new Error(`${label}超过本地诊断样本大小限制。`)
+  return Buffer.from(encoded, 'base64')
+}
+
+function saveOcrDiagnosticSample(sample = {}) {
+  const root = ocrDiagnosticRoot()
+  if (!ocrDiagnosticsEnabled) return { ok: true, saved: false, directory: root }
+  try {
+    const requestedDate = new Date(Number(sample.capturedAt) || Date.now())
+    const date = Number.isFinite(requestedDate.getTime()) ? requestedDate : new Date()
+    const capturedAt = date.getTime()
+    const day = date.toISOString().slice(0, 10)
+    const stamp = date.toISOString().replace(/[:.]/g, '-')
+    ocrDiagnosticSequence += 1
+    const directory = path.join(root, day, `${stamp}-${String(ocrDiagnosticSequence).padStart(4, '0')}`)
+    const original = decodePngDataUrl(sample.originalImage, '原始裁剪图')
+    const preprocessed = decodePngDataUrl(sample.preprocessedImage, 'OCR 预处理图')
+    const tsv = String(sample.tsv || '')
+    if (Buffer.byteLength(tsv, 'utf8') > 4_000_000) throw new Error('OCR TSV 超过本地诊断样本大小限制。')
+    const candidates = Array.isArray(sample.candidates) ? sample.candidates.slice(-20) : []
+    const expectedText = String(sample.expectedText || '').slice(0, 4_000)
+    fs.mkdirSync(directory, { recursive: true })
+    fs.writeFileSync(path.join(directory, 'original.png'), original)
+    fs.writeFileSync(path.join(directory, 'preprocessed.png'), preprocessed)
+    fs.writeFileSync(path.join(directory, 'words.tsv'), tsv, 'utf8')
+    fs.writeFileSync(path.join(directory, 'expected.txt'), expectedText, 'utf8')
+    fs.writeFileSync(path.join(directory, 'candidate.json'), JSON.stringify({
+      capturedAt: new Date(capturedAt).toISOString(),
+      engine: String(sample.engine || 'tesseract'),
+      candidates,
+      expectedText: expectedText || null,
+      privacy: 'Local diagnostic sample. Do not upload without reviewing player/chat content.',
+    }, null, 2), 'utf8')
+    return { ok: true, saved: true, directory }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    log(`OCR_DIAGNOSTIC_SAVE_FAILED reason=${JSON.stringify(message)}`)
+    return { ok: false, saved: false, error: message }
+  }
 }
 
 async function moveOverlayAboveDota() {
@@ -1075,6 +1129,9 @@ function registerApiHandler() {
       }
     }
   })
+
+  ipcMain.handle('ocr-diagnostic:get-state', () => ({ ok: true, enabled: ocrDiagnosticsEnabled, directory: ocrDiagnosticRoot() }))
+  ipcMain.handle('ocr-diagnostic:save', (_event, sample) => saveOcrDiagnosticSample(sample))
 
   ipcMain.handle('translate:text', async (_event, options = {}) => {
     const text = String(options.text || '').trim().slice(0, 1200)

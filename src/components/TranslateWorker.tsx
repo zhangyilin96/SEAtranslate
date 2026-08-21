@@ -29,6 +29,7 @@ export function TranslateWorker() {
     let disposed = false
     let gate = createFrameGateState()
     let primed = false
+    let diagnosticsEnabled = false
     let previousCandidates: string[] = []
     const seenAt = new Map<string, number>()
 
@@ -44,6 +45,7 @@ export function TranslateWorker() {
 
     async function run() {
       if (disposed || !foreground.current || !region.current) return
+      diagnosticsEnabled = diagnosticsEnabled || Boolean((await window.dotaScoutDesktop?.getOcrDiagnosticState())?.enabled)
       const token = ++loopToken.current
       const startedAt = Date.now()
       let lastIdleReportAt = 0
@@ -98,13 +100,27 @@ export function TranslateWorker() {
             ocrCount += 1
             gate = markFrameOcred(gate, signature, ocrAt)
             const colorPixels = await readImagePixels(colorSample)
-            let candidates: OcrChatLine[] = extractChatLinesFromTsv(result.data.tsv || '', colorPixels)
+            let diagnosticTsv = result.data.tsv || ''
+            let diagnosticEngine = 'tesseract.js:eng'
+            let candidates: OcrChatLine[] = extractChatLinesFromTsv(diagnosticTsv, colorPixels)
             if (primed && candidates.length === 0) {
               const fallback = await getThaiOcrWorker((message, progress) => report(`泰文 OCR · ${message} ${Math.round(progress * 100)}%`, true, '', { captureMs }))
               if (!active()) return
               const thaiResult = await fallback.recognize(sample, {}, { tsv: true })
               if (!active()) return
-              candidates = extractChatLinesFromTsv(thaiResult.data.tsv || '', colorPixels)
+              diagnosticTsv = thaiResult.data.tsv || ''
+              diagnosticEngine = 'tesseract.js:eng+tha'
+              candidates = extractChatLinesFromTsv(diagnosticTsv, colorPixels)
+            }
+            if (diagnosticsEnabled) {
+              void window.dotaScoutDesktop?.saveOcrDiagnostic({
+                capturedAt: ocrAt,
+                originalImage: colorSample,
+                preprocessedImage: sample,
+                tsv: diagnosticTsv,
+                candidates,
+                engine: diagnosticEngine,
+              })
             }
             const ocrMs = Math.round(performance.now() - ocrStartedAt)
             candidateCount = candidates.length

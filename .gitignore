@@ -36,6 +36,7 @@ cache/
 
 # Local screenshots and generated smoke-test artifacts
 screenshots/
+ocr-diagnostics/
 
 # Secrets and local configuration
 .env

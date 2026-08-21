@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('dotaScoutDesktop', {
   reportWorkerState: (state) => ipcRenderer.invoke('companion:worker-state', state),
   finishOutgoing: (options) => ipcRenderer.invoke('outgoing:finish', options),
   captureScreen: (options) => ipcRenderer.invoke('capture:screen', options),
+  getOcrDiagnosticState: () => ipcRenderer.invoke('ocr-diagnostic:get-state'),
+  saveOcrDiagnostic: (sample) => ipcRenderer.invoke('ocr-diagnostic:save', sample),
   translateText: (options) => ipcRenderer.invoke('translate:text', options),
   getGameBarState: () => ipcRenderer.invoke('gamebar:get-state'),
   sendGameBarTestMessage: () => ipcRenderer.invoke('gamebar:send-test-message'),

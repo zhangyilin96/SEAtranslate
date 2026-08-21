@@ -82,6 +82,17 @@ type HeroMetadataResult =
   | { ok: false; error: string }
 
 export type ScreenCaptureResult = { ok: true; image: string; width: number; height: number; displayId: string; displayName: string; resolution: string } | { ok: false; error: string }
+export type OcrDiagnosticState = { ok: true; enabled: boolean; directory: string }
+export type OcrDiagnosticSample = {
+  capturedAt: number
+  originalImage: string
+  preprocessedImage: string
+  tsv: string
+  candidates: Array<Record<string, unknown>>
+  engine: string
+  expectedText?: string
+}
+export type OcrDiagnosticSaveResult = { ok: true; saved: boolean; directory: string } | { ok: false; saved: false; error: string }
 type TranslationResult = { ok: true; translated: string; language: string; provider: string; cached?: boolean; elapsedMs?: number } | { ok: false; error: string }
 export type DotaStatusResult = { ok: true; installed: boolean; installPath: string | null; isRunning: boolean; isForeground: boolean; identityStatus: 'unavailable' } | { ok: false; error: string }
 
@@ -109,6 +120,8 @@ declare global {
       reportWorkerState(state: WorkerState): Promise<{ ok: boolean }>
       finishOutgoing(options: { text?: string; copy?: boolean }): Promise<{ ok: boolean; copied: boolean; sent: false }>
       captureScreen(options?: { hideMain?: boolean; displayId?: string; maxWidth?: number }): Promise<ScreenCaptureResult>
+      getOcrDiagnosticState(): Promise<OcrDiagnosticState>
+      saveOcrDiagnostic(sample: OcrDiagnosticSample): Promise<OcrDiagnosticSaveResult>
       translateText(options: { text: string; target?: string; sourceLanguage?: string; apiKey?: string }): Promise<TranslationResult>
       setLiveTranslateEnabled(enabled: boolean): Promise<CompanionState>
       getGameBarState(): Promise<GameBarBridgeResult>

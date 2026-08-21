@@ -27,3 +27,21 @@ Game Bar 的 Click-through 开启时无法拖动 Widget。需要改位置时，�
 - 修复版还会显示 `Probe #`、`OCR #`、`Lines` 和 `Δ`。至少发送一条新聊天后等待 8 秒，再切回控制页截图；`OCR #` 应从 1 增加。
 
 出现明显卡顿时，立即在 LIVE TRANSLATE 页面点击 `暂停实时翻译`。该操作会关闭 OCR 工作窗口，但不会修改 Dota，也不会向 `dota2.exe` 加载任何模块。
+
+## 本地 OCR 诊断样本
+
+只有诊断误识别时才用 `--ocr-diagnostics` 启动程序。普通启动不会持续保存聊天截图，避免额外磁盘写入和隐私留存。
+
+```text
+"Dota Scout Live Translate.exe" --ocr-diagnostics
+```
+
+启用后，每次实际 OCR 会在 `%APPDATA%\Dota Scout\ocr-diagnostics\日期\时间戳-序号\` 保存：
+
+- `original.png`：原始彩色聊天裁剪图
+- `preprocessed.png`：送入 Tesseract 的预处理图
+- `words.tsv`：Tesseract 单词、位置与置信度
+- `candidate.json`：最终聊天候选与 OCR 引擎
+- `expected.txt`：可选人工期望文本，默认留空，可在本机编辑
+
+也可用环境变量 `DOTA_SCOUT_OCR_DIAGNOSTIC_DIR` 指向项目内的 `ocr-diagnostics/` 以便做离线对比；该目录已进入 `.gitignore`。样本只保存在本机，上传前必须检查并移除玩家 ID、战队标签和聊天隐私。
