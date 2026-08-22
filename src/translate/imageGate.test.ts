@@ -21,7 +21,7 @@ describe('OCR image gate', () => {
 
   it('uses a slow heartbeat to recover from a missed threshold', () => {
     const state = markFrameOcred(createFrameGateState(), frame(0, 0), 1_000)
-    const decision = evaluateFrame(state, frame(0, 255), 8_100)
+    const decision = evaluateFrame(state, frame(0, 255), 21_100)
     expect(decision).toMatchObject({ trigger: true, reason: 'heartbeat' })
     expect(signatureDifference(frame(0, 0), frame(0, 255))).toBe(0.5)
   })

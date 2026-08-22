@@ -9,12 +9,15 @@ import { getOcrWorker, getThaiOcrWorker } from '../translate/ocr'
 import { createRegionFingerprint, cropCapture, readImagePixels, readSavedRegion, type SavedCaptureRegion } from '../translate/region'
 
 const API_KEY = 'dota-scout:google-translate-key-v1'
-const PROBE_WIDTH = 512
-const OCR_CAPTURE_WIDTH = 1920
-const PROBE_INTERVAL_MS = 400
-const CONSENSUS_FRAME_INTERVAL_MS = 320
+const PROBE_WIDTH = 320
+const OCR_CAPTURE_WIDTH = 1_100
+const PROBE_INTERVAL_MS = 750
+const CHANGE_VERIFY_INTERVAL_MS = 160
+const CONSENSUS_FRAME_INTERVAL_MS = 240
 const BASELINE_TIMEOUT_MS = 1_600
 const IDLE_REPORT_INTERVAL_MS = 3_000
+const THAI_FALLBACK_INTERVAL_MS = 20_000
+const FULL_CAPTURE_REGION = { x: 0, y: 0, width: 1, height: 1 }
 
 function sleep(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
@@ -32,6 +35,8 @@ export function TranslateWorker() {
     let consensus = createOcrConsensusState()
     let consensusFollowUp = false
     let diagnosticsEnabled = false
+    let emptyEnglishFrames = 0
+    let lastThaiFallbackAt = 0
 
     function report(status: string, running = false, lastError = '', metrics: Partial<WorkerState> = {}) {
       void window.dotaScoutDesktop?.reportWorkerState({ configured: Boolean(region.current), running, status, lastScanAt: Date.now(), lastError, ...metrics })
@@ -61,36 +66,47 @@ export function TranslateWorker() {
         const saved: SavedCaptureRegion = region.current
         const active = () => !disposed && token === loopToken.current && foreground.current && region.current === saved
         let captureMs = 0
+        let nextDelayMs = consensusFollowUp ? CONSENSUS_FRAME_INTERVAL_MS : PROBE_INTERVAL_MS
         try {
-          const probeStartedAt = performance.now()
-          const probe = await window.dotaScoutDesktop?.captureScreen({ displayId: saved.displayId, maxWidth: PROBE_WIDTH })
-          probeCount += 1
-          captureMs = Math.round(performance.now() - probeStartedAt)
-          if (!probe?.ok) throw new Error(probe?.error || '聊天区域截图失败')
-          const signature = await createRegionFingerprint(probe.image, saved)
-          if (!active()) return
-          const decision = evaluateFrame(gate, signature, Date.now())
-          gate = decision.state
-          changePercent = Number((decision.ocrDifference * 100).toFixed(2))
-          const baselineTimeout = !consensus.primed && Date.now() - startedAt >= BASELINE_TIMEOUT_MS
           const followUpDue = consensusFollowUp && gate.lastOcrAt > 0 && Date.now() - gate.lastOcrAt >= CONSENSUS_FRAME_INTERVAL_MS
+          let signature: Uint8Array | null = null
+          let shouldOcr = followUpDue
+          let triggerStatus = 'OCR 共识补帧'
 
-          if (decision.trigger || baselineTimeout || followUpDue) {
-            report(followUpDue ? 'OCR 共识补帧' : decision.reason === 'heartbeat' ? 'OCR 恢复检查' : '检测到聊天变化', true, '', { captureMs, probeCount, ocrCount, candidateCount, changePercent })
+          if (!followUpDue) {
+            const probeStartedAt = performance.now()
+            const probe = await window.dotaScoutDesktop?.captureScreen({ displayId: saved.displayId, maxWidth: PROBE_WIDTH, region: saved })
+            probeCount += 1
+            captureMs = Math.round(performance.now() - probeStartedAt)
+            if (!probe?.ok) throw new Error(probe?.error || '聊天区域截图失败')
+            signature = await createRegionFingerprint(probe.image, FULL_CAPTURE_REGION)
+            if (!active()) return
+            const decision = evaluateFrame(gate, signature, Date.now())
+            gate = decision.state
+            changePercent = Number((decision.ocrDifference * 100).toFixed(2))
+            const baselineTimeout = !consensus.primed && Date.now() - startedAt >= BASELINE_TIMEOUT_MS
+            shouldOcr = decision.trigger || baselineTimeout
+            triggerStatus = decision.reason === 'heartbeat' ? 'OCR 恢复检查' : '检测到聊天变化'
+            if (!shouldOcr && decision.ocrDifference >= 0.006) nextDelayMs = CHANGE_VERIFY_INTERVAL_MS
+          }
+
+          if (shouldOcr) {
+            report(triggerStatus, true, '', { captureMs, probeCount, ocrCount, candidateCount, changePercent })
             const fullCaptureStartedAt = performance.now()
-            const capture = await window.dotaScoutDesktop?.captureScreen({ displayId: saved.displayId, maxWidth: OCR_CAPTURE_WIDTH })
+            const capture = await window.dotaScoutDesktop?.captureScreen({ displayId: saved.displayId, maxWidth: OCR_CAPTURE_WIDTH, region: saved })
             captureMs += Math.round(performance.now() - fullCaptureStartedAt)
             if (!capture?.ok) throw new Error(capture?.error || '聊天区域截图失败')
             if (!active()) return
             const savedAspect = saved.captureWidth / saved.captureHeight
-            const currentAspect = capture.width / capture.height
+            const currentAspect = (capture.captureWidth || saved.captureWidth) / (capture.captureHeight || saved.captureHeight)
             if (Math.abs(savedAspect - currentAspect) > 0.02) {
-              throw new Error(`显示比例已变化：已保存 ${saved.captureWidth}×${saved.captureHeight}，当前捕获 ${capture.width}×${capture.height}。请按 Ctrl+Shift+F8 重新选择。`)
+              throw new Error(`显示比例已变化：已保存 ${saved.captureWidth}×${saved.captureHeight}，当前捕获 ${capture.captureWidth}×${capture.captureHeight}。请按 Ctrl+Shift+F8 重新选择。`)
             }
+            signature = signature || await createRegionFingerprint(capture.image, FULL_CAPTURE_REGION)
 
             const [sample, colorSample] = await Promise.all([
-              cropCapture(capture.image, saved),
-              cropCapture(capture.image, saved, false, true),
+              cropCapture(capture.image, FULL_CAPTURE_REGION),
+              cropCapture(capture.image, FULL_CAPTURE_REGION, false, true),
             ])
             if (!active()) return
             const worker = await getOcrWorker((message, progress) => report(`OCR · ${message} ${Math.round(progress * 100)}%`, true, '', { captureMs }))
@@ -105,7 +121,13 @@ export function TranslateWorker() {
             let diagnosticTsv = result.data.tsv || ''
             let diagnosticEngine = 'tesseract.js:eng'
             let candidates: OcrChatLine[] = extractChatLinesFromTsv(diagnosticTsv, colorPixels)
-            if (consensus.primed && candidates.length === 0) {
+            emptyEnglishFrames = candidates.length === 0 ? emptyEnglishFrames + 1 : 0
+            const shouldRunThaiFallback = consensus.primed
+              && candidates.length === 0
+              && emptyEnglishFrames >= 2
+              && ocrAt - lastThaiFallbackAt >= THAI_FALLBACK_INTERVAL_MS
+            if (shouldRunThaiFallback) {
+              lastThaiFallbackAt = ocrAt
               const fallback = await getThaiOcrWorker((message, progress) => report(`泰文 OCR · ${message} ${Math.round(progress * 100)}%`, true, '', { captureMs }))
               if (!active()) return
               const thaiResult = await fallback.recognize(sample, {}, { tsv: true })
@@ -113,6 +135,7 @@ export function TranslateWorker() {
               diagnosticTsv = thaiResult.data.tsv || ''
               diagnosticEngine = 'tesseract.js:eng+tha'
               candidates = extractChatLinesFromTsv(diagnosticTsv, colorPixels)
+              if (candidates.length) emptyEnglishFrames = 0
             }
             if (diagnosticsEnabled) {
               const save = window.dotaScoutDesktop?.saveOcrDiagnostic({
@@ -131,7 +154,8 @@ export function TranslateWorker() {
             const wasPrimed = consensus.primed
             const consensusDecision = advanceOcrConsensus(consensus, candidates, ocrAt)
             consensus = consensusDecision.state
-            consensusFollowUp = consensusDecision.needsFollowUp
+            const needsLanguageFallbackFrame = consensus.primed && candidates.length === 0 && emptyEnglishFrames === 1
+            consensusFollowUp = consensusDecision.needsFollowUp || needsLanguageFallbackFrame
 
             if (!consensus.primed) {
               report(`正在建立 OCR 共识基线 · ${consensus.pendingAttempts}/3 帧 · OCR #${ocrCount}`, true, '', { captureMs, ocrMs, lastOcrAt: ocrAt, probeCount, ocrCount, candidateCount, changePercent, recognizedPreview })
@@ -197,7 +221,7 @@ export function TranslateWorker() {
           await sleep(1_200)
         }
 
-        await sleep(PROBE_INTERVAL_MS)
+        await sleep(consensusFollowUp ? CONSENSUS_FRAME_INTERVAL_MS : nextDelayMs)
       }
     }
 
@@ -212,6 +236,8 @@ export function TranslateWorker() {
       gate = createFrameGateState()
       consensus = createOcrConsensusState()
       consensusFollowUp = false
+      emptyEnglishFrames = 0
+      lastThaiFallbackAt = 0
       lines.current = []
       void window.dotaScoutDesktop?.updateOverlay({ translations: [], configured: Boolean(region.current), diagnostic: false })
       void window.dotaScoutDesktop?.publishGameBarTranslations([])

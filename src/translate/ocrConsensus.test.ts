@@ -93,7 +93,7 @@ describe('multi-frame OCR consensus', () => {
       line('we need farm first', 50, 89),
       line('wif', 70, 22),
     ], 2_000)
-    expect(first.publish).toEqual([])
+    expect(first.publish.map((candidate) => candidate.message)).toEqual(['we need back', 'we need farm first'])
     expect(first.state.committed).toEqual([])
     expect(first.needsFollowUp).toBe(true)
 
@@ -104,7 +104,8 @@ describe('multi-frame OCR consensus', () => {
       line('we need farm first', 50, 88),
       line('wtf', 70, 18),
     ], 2_400)
-    expect(second.publish.map((candidate) => candidate.message)).toEqual(['gogogo', 'we need back', 'we need farm first'])
+    expect(second.publish.map((candidate) => candidate.message)).toEqual(['gogogo'])
+    expect(second.publish.map((candidate) => candidate.message)).not.toContain('we need back')
     expect(second.needsFollowUp).toBe(true)
 
     const third = feed(second.state, [

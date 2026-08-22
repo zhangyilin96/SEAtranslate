@@ -81,6 +81,9 @@ export function translateDotaCall(source: string) {
   if (/^w(?:8+|ait|a1t|es)$/i.test(normalized)) return '等一下'
   if (/^(?:need|needto|gonna|gotta)farm$/i.test(normalized)) return '需要刷钱'
   if (/^(?:gofarm|farmnow)$/i.test(normalized)) return '去刷钱'
+  if (/^(?:cant|cannot)back$/i.test(normalized)) return '撤不了'
+  if (/^(?:we|i)?(?:need|needto|gotta)back$/i.test(normalized)) return normalized.startsWith('we') ? '我们得撤' : '得撤'
+  if (/^(?:we|i)?(?:need|needto|gotta)farmfirst$/i.test(normalized)) return normalized.startsWith('we') ? '我们得先刷钱' : '得先刷钱'
   if (/^(?:we|i)?needtohide$/i.test(normalized)) return normalized.startsWith('we') ? '我们需要躲起来' : '需要躲起来'
   if (/^(?:lets|letus|go|do|take|kill)(?:rs|rosh|roshan)$/i.test(normalized)) return `打肉山${question}`
   const laneCall = /^(push|go|def|defend)(top|mid|bot|bottom)$/i.exec(normalized)

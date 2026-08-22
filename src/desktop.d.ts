@@ -81,7 +81,7 @@ type HeroMetadataResult =
   | { ok: true; heroes: import('./types').HeroMetadata[] }
   | { ok: false; error: string }
 
-export type ScreenCaptureResult = { ok: true; image: string; width: number; height: number; displayId: string; displayName: string; resolution: string } | { ok: false; error: string }
+export type ScreenCaptureResult = { ok: true; image: string; width: number; height: number; captureWidth?: number; captureHeight?: number; displayId: string; displayName: string; resolution: string; engine?: string } | { ok: false; error: string }
 export type OcrDiagnosticState = { ok: true; enabled: boolean; directory: string }
 export type OcrDiagnosticSample = {
   capturedAt: number
@@ -119,7 +119,7 @@ declare global {
       clearRegion(): Promise<{ ok: boolean }>
       reportWorkerState(state: WorkerState): Promise<{ ok: boolean }>
       finishOutgoing(options: { text?: string; copy?: boolean }): Promise<{ ok: boolean; copied: boolean; sent: false }>
-      captureScreen(options?: { hideMain?: boolean; displayId?: string; maxWidth?: number }): Promise<ScreenCaptureResult>
+      captureScreen(options?: { hideMain?: boolean; displayId?: string; maxWidth?: number; region?: { x: number; y: number; width: number; height: number } }): Promise<ScreenCaptureResult>
       getOcrDiagnosticState(): Promise<OcrDiagnosticState>
       saveOcrDiagnostic(sample: OcrDiagnosticSample): Promise<OcrDiagnosticSaveResult>
       translateText(options: { text: string; target?: string; sourceLanguage?: string; apiKey?: string }): Promise<TranslationResult>

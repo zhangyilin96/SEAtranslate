@@ -170,6 +170,12 @@ function gameBarBridgeHelperPath() {
     : path.join(__dirname, '..', 'native', 'DotaScout.GameBarBridge.exe')
 }
 
+function screenCaptureHelperPath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'native', 'DotaScout.ScreenCapture.exe')
+    : path.join(__dirname, '..', 'native', 'DotaScout.ScreenCapture.exe')
+}
+
 function publishGameBarBridgeState() {
   const value = { ok: true, state: gameBarState, status: gameBarBridgeStatus }
   mainWindow?.webContents.send('gamebar:state', value)
@@ -829,6 +835,92 @@ async function captureDisplay(displayId, maxWidth) {
   }
 }
 
+function captureRegionWithHelper(display, region, maxWidth) {
+  return new Promise((resolve, reject) => {
+    const nativeWidth = Math.round(display.size.width * display.scaleFactor)
+    const nativeHeight = Math.round(display.size.height * display.scaleFactor)
+    const x = Math.round(display.bounds.x * display.scaleFactor + nativeWidth * region.x)
+    const y = Math.round(display.bounds.y * display.scaleFactor + nativeHeight * region.y)
+    const width = Math.max(1, Math.round(nativeWidth * region.width))
+    const height = Math.max(1, Math.round(nativeHeight * region.height))
+    const outputWidth = Math.max(160, Math.min(width, Math.round(Number(maxWidth) || width)))
+    const outputHeight = Math.max(1, Math.round(height * outputWidth / width))
+    execFile(screenCaptureHelperPath(), [String(x), String(y), String(width), String(height), String(outputWidth)], {
+      windowsHide: true,
+      timeout: 4_000,
+      encoding: null,
+      maxBuffer: 16 * 1024 * 1024,
+    }, (error, stdout, stderr) => {
+      if (error || !Buffer.isBuffer(stdout) || stdout.length === 0) {
+        reject(new Error(String(stderr || error?.message || '区域截图失败').trim()))
+        return
+      }
+      resolve({
+        ok: true,
+        image: `data:image/png;base64,${stdout.toString('base64')}`,
+        width: outputWidth,
+        height: outputHeight,
+        captureWidth: nativeWidth,
+        captureHeight: nativeHeight,
+        displayId: String(display.id),
+        displayName: display.label || `Monitor ${display.id}`,
+        resolution: `${nativeWidth} × ${nativeHeight}`,
+        engine: 'win32-region',
+      })
+    })
+  })
+}
+
+async function captureRegion(displayId, region, maxWidth) {
+  const displays = screen.getAllDisplays()
+  const requested = displays.find((item) => String(item.id) === String(displayId))
+  const display = requested || screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  const normalized = {
+    x: Math.max(0, Math.min(1, Number(region?.x) || 0)),
+    y: Math.max(0, Math.min(1, Number(region?.y) || 0)),
+    width: Math.max(0, Math.min(1, Number(region?.width) || 0)),
+    height: Math.max(0, Math.min(1, Number(region?.height) || 0)),
+  }
+  if (normalized.width <= 0 || normalized.height <= 0) return { ok: false, error: '聊天区域无效，请重新选择。' }
+  try {
+    return await captureRegionWithHelper(display, normalized, maxWidth)
+  } catch (error) {
+    log(`WIN32_REGION_CAPTURE_FAILED reason=${error instanceof Error ? error.message : String(error)}`)
+    const requestedScreenWidth = Math.ceil((Number(maxWidth) || 1920) / normalized.width)
+    const full = await captureDisplay(String(display.id), requestedScreenWidth)
+    if (!full.ok) return full
+    const image = nativeImage.createFromDataURL(full.image)
+    const size = image.getSize()
+    const bounds = {
+      x: Math.max(0, Math.round(size.width * normalized.x)),
+      y: Math.max(0, Math.round(size.height * normalized.y)),
+      width: Math.max(1, Math.min(size.width, Math.round(size.width * normalized.width))),
+      height: Math.max(1, Math.min(size.height, Math.round(size.height * normalized.height))),
+    }
+    bounds.width = Math.min(bounds.width, size.width - bounds.x)
+    bounds.height = Math.min(bounds.height, size.height - bounds.y)
+    let cropped = image.crop(bounds)
+    const requestedMaxWidth = Number(maxWidth)
+    if (Number.isFinite(requestedMaxWidth) && cropped.getSize().width > requestedMaxWidth) {
+      cropped = cropped.resize({ width: Math.round(requestedMaxWidth), quality: 'good' })
+    }
+    const nativeWidth = Math.round(display.size.width * display.scaleFactor)
+    const nativeHeight = Math.round(display.size.height * display.scaleFactor)
+    return {
+      ok: true,
+      image: cropped.toDataURL(),
+      width: cropped.getSize().width,
+      height: cropped.getSize().height,
+      captureWidth: nativeWidth,
+      captureHeight: nativeHeight,
+      displayId: String(display.id),
+      displayName: display.label || `Monitor ${display.id}`,
+      resolution: `${nativeWidth} × ${nativeHeight}`,
+      engine: 'electron-region-fallback',
+    }
+  }
+}
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 
 if (!gotSingleInstanceLock) {
@@ -1121,7 +1213,9 @@ function registerApiHandler() {
       await new Promise((resolve) => setTimeout(resolve, 350))
     }
     try {
-      return await captureDisplay(options.displayId, options.maxWidth)
+      return options.region
+        ? await captureRegion(options.displayId, options.region, options.maxWidth)
+        : await captureDisplay(options.displayId, options.maxWidth)
     } finally {
       if (hideMain && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.show()

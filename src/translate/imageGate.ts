@@ -25,7 +25,7 @@ export const DEFAULT_FRAME_GATE_OPTIONS: FrameGateOptions = {
   stabilityThreshold: 0.003,
   changeThreshold: 0.006,
   requiredStableSamples: 1,
-  heartbeatMs: 7_000,
+  heartbeatMs: 20_000,
   minOcrIntervalMs: 2_000,
 }
 
