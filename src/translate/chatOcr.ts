@@ -98,7 +98,12 @@ function contiguousMessageWords(words: MeasuredWord[], initialRight: number) {
     previousRight = Math.max(previousRight, item.left + item.width)
     previousHeight = item.height
   }
-  return accepted
+  // Keep a lone zero-confidence word for multi-frame recovery, but when the
+  // same row already contains credible text, discard zero/very-low confidence
+  // tail fragments produced by trees and HUD edges (for example "gogoge LT"
+  // where LT has confidence 0).
+  const credible = accepted.filter((item) => item.confidence >= 15)
+  return credible.length ? credible : accepted
 }
 
 function wordEvidence(word: OcrWord, text = word.text): OcrWordEvidence {

@@ -136,4 +136,20 @@ describe('Dota chat color-aware OCR extraction', () => {
     ])
     expect(textOnly(extractChatLinesFromTsv(tsv, image))).toEqual([{ speaker: 'kiseki', message: 'back' }])
   })
+
+  it('drops a zero-confidence trailing scene fragment when the row has a credible message word', () => {
+    const tsv = [
+      wordTsv('kiseki', 1, 20, 42, 87),
+      wordTsv('[TAG]:', 2, 68, 38, 82),
+      wordTsv('gogoge', 3, 114, 48, 77),
+      wordTsv('LT', 4, 166, 16, 0),
+    ].join('\n')
+    const image = imageWithWords([
+      { left: 20, width: 42, rgb: [35, 125, 245] },
+      { left: 68, width: 38, rgb: [35, 125, 245] },
+      { left: 114, width: 48, rgb: [245, 245, 235] },
+      { left: 166, width: 16, rgb: [245, 245, 235] },
+    ])
+    expect(textOnly(extractChatLinesFromTsv(tsv, image))).toEqual([{ speaker: 'kiseki', message: 'gogoge' }])
+  })
 })
