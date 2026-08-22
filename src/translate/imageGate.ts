@@ -1,7 +1,6 @@
 export type FrameGateOptions = {
   stabilityThreshold: number
   changeThreshold: number
-  strongChangeThreshold: number
   requiredStableSamples: number
   heartbeatMs: number
   minOcrIntervalMs: number
@@ -25,7 +24,6 @@ export type FrameGateDecision = {
 export const DEFAULT_FRAME_GATE_OPTIONS: FrameGateOptions = {
   stabilityThreshold: 0.003,
   changeThreshold: 0.006,
-  strongChangeThreshold: 0.025,
   requiredStableSamples: 1,
   heartbeatMs: 20_000,
   minOcrIntervalMs: 2_000,
@@ -56,8 +54,7 @@ export function evaluateFrame(
   const heartbeat = Boolean(current.lastOcrAt && now - current.lastOcrAt >= options.heartbeatMs)
   const baseline = !current.lastOcr
   const changed = Boolean(current.lastOcr && ocrDifference >= options.changeThreshold)
-  const strongChanged = Boolean(current.lastOcr && ocrDifference >= options.strongChangeThreshold)
-  const trigger = intervalReady && (heartbeat || strongChanged || (stable && (baseline || changed)))
+  const trigger = intervalReady && (heartbeat || (stable && (baseline || changed)))
   const reason = !trigger ? 'waiting' : heartbeat ? 'heartbeat' : baseline ? 'baseline' : 'changed'
   return {
     state: { ...current, previous: signature, stableSamples },

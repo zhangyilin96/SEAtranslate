@@ -121,9 +121,38 @@ export async function readImagePixels(imageUrl: string) {
   return { data: context.getImageData(0, 0, canvas.width, canvas.height).data, width: canvas.width, height: canvas.height }
 }
 
+export function createOutlinedTextFingerprint(pixels: Uint8ClampedArray, width: number, height: number) {
+  const luminance = new Uint8Array(width * height)
+  for (let index = 0; index < luminance.length; index += 1) {
+    const offset = index * 4
+    luminance[index] = Math.round(pixels[offset] * 0.2126 + pixels[offset + 1] * 0.7152 + pixels[offset + 2] * 0.0722)
+  }
+  const signature = new Uint8Array(width * height)
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = y * width + x
+      const offset = index * 4
+      const maximum = Math.max(pixels[offset], pixels[offset + 1], pixels[offset + 2])
+      const minimum = Math.min(pixels[offset], pixels[offset + 1], pixels[offset + 2])
+      if (maximum < 155 || maximum - minimum > 75) continue
+      let nearDarkOutline = false
+      for (let nearY = Math.max(0, y - 2); nearY < Math.min(height, y + 3) && !nearDarkOutline; nearY += 1) {
+        for (let nearX = Math.max(0, x - 2); nearX < Math.min(width, x + 3); nearX += 1) {
+          if (luminance[nearY * width + nearX] <= 85) {
+            nearDarkOutline = true
+            break
+          }
+        }
+      }
+      if (nearDarkOutline) signature[index] = 255
+    }
+  }
+  return signature
+}
+
 export async function createRegionFingerprint(imageUrl: string, region: CaptureRegion) {
   const image = await loadImage(imageUrl)
-  const width = 96
+  const width = 160
   const height = 32
   const canvas = document.createElement('canvas')
   canvas.width = width
@@ -141,26 +170,7 @@ export async function createRegionFingerprint(imageUrl: string, region: CaptureR
     height,
   )
   const pixels = context.getImageData(0, 0, width, height).data
-  const luminance = new Uint8Array(width * height)
-  for (let index = 0; index < luminance.length; index += 1) {
-    const offset = index * 4
-    luminance[index] = Math.round(pixels[offset] * 0.2126 + pixels[offset + 1] * 0.7152 + pixels[offset + 2] * 0.0722)
-  }
-  const signature = new Uint8Array(width * height)
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const index = y * width + x
-      const value = luminance[index]
-      const horizontal = x > 0 ? Math.abs(value - luminance[index - 1]) : 0
-      const vertical = y > 0 ? Math.abs(value - luminance[index - width]) : 0
-      const offset = index * 4
-      const maxChannel = Math.max(pixels[offset], pixels[offset + 1], pixels[offset + 2])
-      const minChannel = Math.min(pixels[offset], pixels[offset + 1], pixels[offset + 2])
-      const textLike = value >= 140 || (maxChannel - minChannel >= 55 && value >= 85)
-      signature[index] = textLike && Math.max(horizontal, vertical) >= 24 ? 255 : 0
-    }
-  }
-  return signature
+  return createOutlinedTextFingerprint(pixels, width, height)
 }
 
 export async function saveCaptureRegion(region: CaptureRegion, capture: Extract<ScreenCaptureResult, { ok: true }>) {

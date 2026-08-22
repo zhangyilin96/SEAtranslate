@@ -22,13 +22,15 @@ describe('OCR image gate', () => {
     expect(stable).toMatchObject({ trigger: true, reason: 'changed' })
   })
 
-  it('triggers immediately when a strong chat change is well above ambient scene noise', () => {
+  it('does not let one high-change animation frame bypass stability', () => {
     const baseline = frame(...Array.from({ length: 128 }, () => 0))
     const changedFrame = baseline.slice()
     changedFrame.fill(255, 60, 64)
     const state = markFrameOcred(createFrameGateState(), baseline, 1_000)
     const changed = evaluateFrame(state, changedFrame, 3_100)
-    expect(changed).toMatchObject({ trigger: true, reason: 'changed' })
+    expect(changed.trigger).toBe(false)
+    const stable = evaluateFrame(changed.state, changedFrame, 3_500)
+    expect(stable).toMatchObject({ trigger: true, reason: 'changed' })
   })
 
   it('uses a slow heartbeat to recover from a missed threshold', () => {
