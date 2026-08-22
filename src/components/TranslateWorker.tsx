@@ -12,7 +12,6 @@ const API_KEY = 'dota-scout:google-translate-key-v1'
 const PROBE_WIDTH = 320
 const OCR_CAPTURE_WIDTH = 1_100
 const PROBE_INTERVAL_MS = 750
-const CHANGE_VERIFY_INTERVAL_MS = 160
 const CONSENSUS_FRAME_INTERVAL_MS = 240
 const BASELINE_TIMEOUT_MS = 1_600
 const IDLE_REPORT_INTERVAL_MS = 3_000
@@ -66,7 +65,7 @@ export function TranslateWorker() {
         const saved: SavedCaptureRegion = region.current
         const active = () => !disposed && token === loopToken.current && foreground.current && region.current === saved
         let captureMs = 0
-        let nextDelayMs = consensusFollowUp ? CONSENSUS_FRAME_INTERVAL_MS : PROBE_INTERVAL_MS
+        const nextDelayMs = consensusFollowUp ? CONSENSUS_FRAME_INTERVAL_MS : PROBE_INTERVAL_MS
         try {
           const followUpDue = consensusFollowUp && gate.lastOcrAt > 0 && Date.now() - gate.lastOcrAt >= CONSENSUS_FRAME_INTERVAL_MS
           let signature: Uint8Array | null = null
@@ -87,7 +86,6 @@ export function TranslateWorker() {
             const baselineTimeout = !consensus.primed && Date.now() - startedAt >= BASELINE_TIMEOUT_MS
             shouldOcr = decision.trigger || baselineTimeout
             triggerStatus = decision.reason === 'heartbeat' ? 'OCR 恢复检查' : '检测到聊天变化'
-            if (!shouldOcr && gate.lastOcrAt > 0 && decision.ocrDifference >= 0.006) nextDelayMs = CHANGE_VERIFY_INTERVAL_MS
           }
 
           if (shouldOcr) {
