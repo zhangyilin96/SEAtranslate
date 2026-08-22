@@ -26,7 +26,9 @@ const glossary: Array<[RegExp, string]> = [
 ]
 
 export function normalizeOcrLine(value: string) {
-  return value.replace(/[|¦]/g, 'I').replace(/\s+/g, ' ').replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}!?.,]+$/gu, '').trim()
+  const compact = value.replace(/[|¦]/g, 'I').replace(/\s+/g, ' ').trim()
+  if (/^[!?.,]+$/.test(compact)) return compact
+  return compact.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}!?.,]+$/gu, '').trim()
 }
 
 export function lineFingerprint(value: string) {
@@ -72,6 +74,8 @@ const quickCalls: Array<[RegExp, string]> = [
 ]
 
 export function translateDotaCall(source: string) {
+  const punctuation = normalizeOcrLine(source)
+  if (/^[?？]{1,4}$/.test(punctuation)) return '？'.repeat([...punctuation].length)
   const normalized = lineFingerprint(source)
   const question = /[?？]/.test(source) ? '？' : ''
   if (/^(?:go){1,5}$/i.test(normalized)) return '上'.repeat(normalized.length / 2)
@@ -79,6 +83,7 @@ export function translateDotaCall(source: string) {
   if (exact) return question && /^(?:rs|rosh|roshan)$/i.test(normalized) ? `${exact}${question}` : exact
   if (/^g[go0e]{1,9}$/i.test(normalized) && /[o0]/i.test(normalized)) return '上'.repeat(Math.max(1, Math.min(5, Math.floor(normalized.length / 2))))
   if (/^w(?:8+|ait|a1t|es)$/i.test(normalized)) return '等一下'
+  if (/^y(?:u|you)go$/i.test(normalized)) return '你为什么走？'
   if (/^(?:need|needto|gonna|gotta)farm$/i.test(normalized)) return '需要刷钱'
   if (/^(?:gofarm|farmnow)$/i.test(normalized)) return '去刷钱'
   if (/^(?:cant|cannot)back$/i.test(normalized)) return '撤不了'

@@ -4,6 +4,7 @@ import { applyDotaGlossary, lineFingerprint, normalizeOcrLine, translateDotaCall
 describe('translate helpers', () => {
   it('normalizes OCR noise and produces stable duplicate keys', () => {
     expect(normalizeOcrLine('  | smoke   rosh!!  ')).toBe('I smoke rosh!!')
+    expect(normalizeOcrLine(' ?? ')).toBe('??')
     expect(lineFingerprint('Go   Roshan!')).toBe(lineFingerprint('go roshan'))
   })
 
@@ -37,6 +38,10 @@ describe('translate helpers', () => {
     expect(translateDotaCall('we need back')).toBe('我们得撤')
     expect(translateDotaCall('we need farm first')).toBe('我们得先刷钱')
     expect(translateDotaCall('focus PA')).toBe('集火幻影刺客')
+    expect(translateDotaCall('catch PA?')).toBe('抓幻影刺客？')
+    expect(translateDotaCall('catch ns?')).toBe('抓暗夜魔王？')
+    expect(translateDotaCall('y u go')).toBe('你为什么走？')
+    expect(translateDotaCall('??')).toBe('？？')
     expect(translateDotaCall('background')).toBeNull()
   })
 })

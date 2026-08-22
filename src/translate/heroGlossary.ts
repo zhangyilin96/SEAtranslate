@@ -137,22 +137,33 @@ function normalizeAlias(value: string) {
   return value.toLocaleLowerCase().replace(/[^a-z0-9]+/g, '')
 }
 
-const aliasCandidates = new Map<string, Set<string>>()
+const explicitAliasCandidates = new Map<string, Set<string>>()
+const acronymCandidates = new Map<string, Set<string>>()
 for (const [english, chinese, aliases = []] of HERO_GLOSSARY) {
   const words = english.match(/[a-z0-9]+/gi) || []
   const acronym = words.length > 1 ? words.map((word) => word[0]).join('') : ''
-  for (const alias of [english, acronym, ...aliases]) {
+  for (const alias of [english, ...aliases]) {
     const key = normalizeAlias(alias)
     if (!key || key.length < 2) continue
-    const values = aliasCandidates.get(key) || new Set<string>()
+    const values = explicitAliasCandidates.get(key) || new Set<string>()
     values.add(chinese)
-    aliasCandidates.set(key, values)
+    explicitAliasCandidates.set(key, values)
+  }
+  const acronymKey = normalizeAlias(acronym)
+  if (acronymKey.length >= 2) {
+    const values = acronymCandidates.get(acronymKey) || new Set<string>()
+    values.add(chinese)
+    acronymCandidates.set(acronymKey, values)
   }
 }
 
-const heroAliases = new Map([...aliasCandidates]
+const heroAliases = new Map([...acronymCandidates]
   .filter(([, values]) => values.size === 1)
   .map(([alias, values]) => [alias, [...values][0]]))
+for (const [alias, values] of explicitAliasCandidates) {
+  if (values.size === 1) heroAliases.set(alias, [...values][0])
+  else heroAliases.delete(alias)
+}
 
 export function translateHeroAlias(value: string) {
   return heroAliases.get(normalizeAlias(value)) || null
@@ -163,10 +174,10 @@ export function translateHeroCall(source: string) {
   const question = /[?？]/.test(source) ? '？' : ''
   const exact = translateHeroAlias(clean)
   if (exact) return `${exact}${question}`
-  const actionMatch = /^(focus|kill|jump|chase)\s+(.+)$/.exec(clean)
+  const actionMatch = /^(focus|kill|jump|chase|catch)\s+(.+)$/.exec(clean)
   if (actionMatch) {
     const hero = translateHeroAlias(actionMatch[2])
-    if (hero) return `${actionMatch[1] === 'focus' ? '集火' : actionMatch[1] === 'kill' ? '杀' : actionMatch[1] === 'jump' ? '先手' : '追'}${hero}${question}`
+    if (hero) return `${actionMatch[1] === 'focus' ? '集火' : actionMatch[1] === 'kill' ? '杀' : actionMatch[1] === 'jump' ? '先手' : actionMatch[1] === 'catch' ? '抓' : '追'}${hero}${question}`
   }
   const missingMatch = /^(.+)\s+(?:miss|missing|mia)$/.exec(clean)
   if (missingMatch) {

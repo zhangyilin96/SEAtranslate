@@ -21,6 +21,8 @@ describe('Dota hero glossary', () => {
 
   it('translates common hero calls locally', () => {
     expect(translateHeroCall('focus pa')).toBe('集火幻影刺客')
+    expect(translateHeroCall('catch pa?')).toBe('抓幻影刺客？')
+    expect(translateHeroCall('catch ns?')).toBe('抓暗夜魔王？')
     expect(translateHeroCall('AM missing')).toBe('敌法师不见了')
     expect(applyHeroGlossary('kill qop then rosh')).toBe('kill 痛苦女王 then rosh')
   })
