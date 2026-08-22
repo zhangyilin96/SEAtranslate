@@ -72,6 +72,43 @@ describe('multi-frame OCR consensus', () => {
     expect(decision.publish.map((candidate) => candidate.message)).toEqual(['back'])
   })
 
+  it('publishes trusted rows from a mixed ordered append without waiting for the whole batch', () => {
+    const state = prime([line('hold lane', 0, 90)])
+    const first = feed(state, [
+      line('hold lane', 0, 90),
+      line('back', 20, 88),
+      line('y so late?', 40, 55),
+    ], 2_000)
+    expect(first.publish.map((candidate) => candidate.message)).toEqual(['back'])
+    expect(first.state.committed.map((candidate) => candidate.message)).toEqual(['hold lane', 'back'])
+    expect(first.needsFollowUp).toBe(true)
+
+    const second = feed(first.state, [
+      line('hold lane', 0, 90),
+      line('back', 20, 88),
+      line('y so late?', 40, 55),
+    ], 2_400)
+    expect(second.publish.map((candidate) => candidate.message)).toEqual(['y so late?'])
+    expect(second.publish.map((candidate) => candidate.message)).not.toContain('back')
+  })
+
+  it('publishes a trusted row from a non-ordered mixed frame while noisy rows wait', () => {
+    const state = prime([line('old alpha', 0, 90), line('old beta', 20, 90)])
+    const first = feed(state, [
+      line('gogogo', 0, 88),
+      line('y so late?', 20, 55),
+    ], 2_000)
+    expect(first.publish.map((candidate) => candidate.message)).toEqual(['gogogo'])
+    expect(first.needsFollowUp).toBe(true)
+
+    const second = feed(first.state, [
+      line('gogogo', 0, 88),
+      line('y so late?', 20, 55),
+    ], 2_400)
+    expect(second.publish.map((candidate) => candidate.message)).toEqual(['y so late?'])
+    expect(second.publish.map((candidate) => candidate.message)).not.toContain('gogogo')
+  })
+
   it('publishes a strong Dota row from an empty window without publishing noisy batch neighbors', () => {
     const state = prime([])
     const decision = feed(state, [

@@ -150,16 +150,6 @@ function commitFrame(state: OcrConsensusState, lines: OcrChatLine[], now: number
   return resetPending({ ...state, primed: true, committed: lines, seenAt })
 }
 
-function sameWindowSlots(previous: OcrChatLine[], current: OcrChatLine[]) {
-  return previous.length === current.length
-    && previous.length > 0
-    && current.every((line, index) => samePositionAndSpeaker(previous[index], line))
-}
-
-function mergePositionCorrections(previous: OcrChatLine[], current: OcrChatLine[], resolved: ResolvedLine[]) {
-  return current.map((line, index) => resolved[index]?.stable && evidenceQuality(line) >= evidenceQuality(previous[index]) ? line : previous[index])
-}
-
 function filterFallbackDuplicates(state: OcrConsensusState, candidates: OcrChatLine[], now: number) {
   const seenAt = new Map(state.seenAt)
   const freshMessages = filterTtlDuplicates(candidates.map((line) => line.message), seenAt, now)
@@ -216,6 +206,7 @@ export function advanceOcrConsensus(
   if (clearAppend) {
     const appendedCount = difference.lines.length
     const appendedRaw = current.slice(-appendedCount)
+    const appendedCanonical = canonical.slice(-appendedCount)
     const fastIndices = appendedRaw.flatMap((line, index) => isFastOcrCandidate(line) ? [index] : [])
     const allFast = appendedRaw.length > 0 && fastIndices.length === appendedRaw.length
     // When the committed window is empty, scene noise can arrive in the same
@@ -223,7 +214,6 @@ export function advanceOcrConsensus(
     // of making one low-confidence tree/UI fragment block the whole batch.
     const partialEmptyWindowFastPath = state.committed.length === 0 && fastIndices.length > 0
     if (allFast) {
-      const appendedCanonical = canonical.slice(-appendedCount)
       let publish = fastIndices.map((index) => appendedCanonical[index]).filter(Boolean).slice(-3)
       if (!difference.orderedAppend) {
         const filtered = filterFallbackDuplicates(state, publish, now)
@@ -234,11 +224,25 @@ export function advanceOcrConsensus(
       return { state, publish, needsFollowUp: false, fastPath: true, stableLineCount }
     }
     const appendedResolved = resolved.slice(-appendedCount)
-    if (partialEmptyWindowFastPath || state.committed.length === 0 && appendedResolved.some((line) => line.stable)) {
-      const acceptedIndices = appendedResolved.flatMap((line, index) => line.stable || fastIndices.includes(index) ? [index] : [])
+    const acceptedIndices = appendedResolved.flatMap((line, index) => line.stable || fastIndices.includes(index) ? [index] : [])
+    if (difference.orderedAppend && acceptedIndices.length > 0 && acceptedIndices.length < appendedCount) {
       const acceptedCandidates = acceptedIndices.map((index) => appendedResolved[index].stable
         ? appendedResolved[index].line
-        : canonical.slice(-appendedCount)[index])
+        : appendedCanonical[index])
+      const trustedWindow = [...canonical.slice(0, -appendedCount), ...acceptedCandidates]
+      state = commitFrame(state, trustedWindow, now)
+      return {
+        state,
+        publish: acceptedCandidates.slice(-3),
+        needsFollowUp: true,
+        fastPath: acceptedIndices.some((index) => fastIndices.includes(index)),
+        stableLineCount,
+      }
+    }
+    if (partialEmptyWindowFastPath || state.committed.length === 0 && appendedResolved.some((line) => line.stable)) {
+      const acceptedCandidates = acceptedIndices.map((index) => appendedResolved[index].stable
+        ? appendedResolved[index].line
+        : appendedCanonical[index])
       const filtered = filterFallbackDuplicates(state, acceptedCandidates, now)
       state = { ...state, seenAt: filtered.seenAt }
       const pending = markPending(state, current)
@@ -268,20 +272,21 @@ export function advanceOcrConsensus(
     return { state: pending.state, publish: [], needsFollowUp: pending.needsFollowUp, fastPath: false, stableLineCount }
   }
 
-  if (sameWindowSlots(state.committed, current)) {
-    state = commitFrame(state, mergePositionCorrections(state.committed, canonical, resolved), now)
-    return { state, publish: [], needsFollowUp: false, fastPath: false, stableLineCount }
-  }
-
   const newIndices = current.flatMap((line, index) => state.committed.some((oldLine) => isNearDuplicate(oldLine.message, line.message)) ? [] : [index])
-  if (newIndices.length && newIndices.every((index) => resolved[index].stable)) {
-    const acceptedCandidates = newIndices.map((index) => resolved[index].line)
+  const acceptedNewIndices = newIndices.filter((index) => resolved[index].stable || isFastOcrCandidate(current[index]))
+  if (acceptedNewIndices.length) {
+    const acceptedCandidates = acceptedNewIndices.map((index) => resolved[index].stable ? resolved[index].line : canonical[index])
     const filtered = filterFallbackDuplicates(state, acceptedCandidates, now)
-    const seenAt = filtered.seenAt
     const publish = filtered.publish.slice(-3)
-    rememberObservedChatLines(canonical.map((line) => line.message), seenAt, now)
-    state = resetPending({ ...state, committed: canonical, seenAt })
-    return { state, publish, needsFollowUp: false, fastPath: false, stableLineCount }
+    const fastPath = acceptedNewIndices.some((index) => isFastOcrCandidate(current[index]))
+    if (acceptedNewIndices.length === newIndices.length) {
+      rememberObservedChatLines(canonical.map((line) => line.message), filtered.seenAt, now)
+      state = resetPending({ ...state, committed: canonical, seenAt: filtered.seenAt })
+      return { state, publish, needsFollowUp: false, fastPath, stableLineCount }
+    }
+    state = { ...state, seenAt: filtered.seenAt }
+    const pending = markPending(state, current)
+    return { state: pending.state, publish, needsFollowUp: pending.needsFollowUp, fastPath, stableLineCount }
   }
 
   const pending = markPending(state, current)
