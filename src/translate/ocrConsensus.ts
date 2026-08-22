@@ -117,7 +117,7 @@ function resolveLine(candidate: OcrChatLine, frames: ConsensusFrame[]): Resolved
 export function isFastOcrCandidate(line: OcrChatLine) {
   const speakerReady = !line.speaker || line.speakerConfidence >= 70
   if (!speakerReady) return false
-  return line.confidence >= 93 || (line.confidence >= 84 && Boolean(translateDotaCall(line.message)))
+  return line.confidence >= 96 || (line.confidence >= 84 && Boolean(translateDotaCall(line.message)))
 }
 
 function canonicalizeCurrent(current: OcrChatLine[], resolved: ResolvedLine[], committed: OcrChatLine[]) {
@@ -216,8 +216,15 @@ export function advanceOcrConsensus(
   if (clearAppend) {
     const appendedCount = difference.lines.length
     const appendedRaw = current.slice(-appendedCount)
-    if (appendedRaw.length && appendedRaw.every(isFastOcrCandidate)) {
-      let publish = canonical.slice(-appendedCount).slice(-3)
+    const fastIndices = appendedRaw.flatMap((line, index) => isFastOcrCandidate(line) ? [index] : [])
+    const allFast = appendedRaw.length > 0 && fastIndices.length === appendedRaw.length
+    // When the committed window is empty, scene noise can arrive in the same
+    // OCR frame as a clear new Dota call. Publish only the strong rows instead
+    // of making one low-confidence tree/UI fragment block the whole batch.
+    const partialEmptyWindowFastPath = state.committed.length === 0 && fastIndices.length > 0
+    if (allFast || partialEmptyWindowFastPath) {
+      const appendedCanonical = canonical.slice(-appendedCount)
+      let publish = fastIndices.map((index) => appendedCanonical[index]).filter(Boolean).slice(-3)
       if (!difference.orderedAppend) {
         const filtered = filterFallbackDuplicates(state, publish, now)
         state = { ...state, seenAt: filtered.seenAt }

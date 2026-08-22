@@ -72,6 +72,17 @@ describe('multi-frame OCR consensus', () => {
     expect(decision.publish.map((candidate) => candidate.message)).toEqual(['back'])
   })
 
+  it('publishes a strong Dota row from an empty window without publishing noisy batch neighbors', () => {
+    const state = prime([])
+    const decision = feed(state, [
+      line('back?', 10, 96.8, 'Kiseki', 84.3),
+      line('need far', 30, 93.7, 'Kiseki', 92.2),
+      line('PEENEERG', 50, 32.2, 'Kiseld', 17.9),
+    ], 2_000)
+    expect(decision.fastPath).toBe(true)
+    expect(decision.publish.map((candidate) => candidate.message)).toEqual(['back?'])
+  })
+
   it('keeps a high-confidence committed row when one character jitters', () => {
     const state = prime([line('push bottom now', 10, 96)])
     const decision = feed(state, [line('push bottorn now', 10, 38)], 2_000)
