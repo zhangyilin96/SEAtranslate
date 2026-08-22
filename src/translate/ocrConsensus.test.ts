@@ -81,6 +81,40 @@ describe('multi-frame OCR consensus', () => {
     ], 2_000)
     expect(decision.fastPath).toBe(true)
     expect(decision.publish.map((candidate) => candidate.message)).toEqual(['back?'])
+    expect(decision.state.committed).toEqual([])
+    expect(decision.needsFollowUp).toBe(true)
+  })
+
+  it('publishes a multi-message burst progressively without losing rows behind one unstable candidate', () => {
+    let state = prime([])
+    const first = feed(state, [
+      line('gogogo', 10, 55),
+      line('we need back', 30, 95),
+      line('we need farm first', 50, 89),
+      line('wif', 70, 22),
+    ], 2_000)
+    expect(first.publish).toEqual([])
+    expect(first.state.committed).toEqual([])
+    expect(first.needsFollowUp).toBe(true)
+
+    state = first.state
+    const second = feed(state, [
+      line('gogogo', 10, 58),
+      line('we need back', 30, 94),
+      line('we need farm first', 50, 88),
+      line('wtf', 70, 18),
+    ], 2_400)
+    expect(second.publish.map((candidate) => candidate.message)).toEqual(['gogogo', 'we need back', 'we need farm first'])
+    expect(second.needsFollowUp).toBe(true)
+
+    const third = feed(second.state, [
+      line('gogogo', 10, 57),
+      line('we need back', 30, 96),
+      line('we need farm first', 50, 90),
+      line('wtf', 70, 20),
+    ], 2_800)
+    expect(third.publish.map((candidate) => candidate.message)).toEqual(['wtf'])
+    expect(third.publish.map((candidate) => candidate.message)).not.toContain('gogogo')
   })
 
   it('keeps a high-confidence committed row when one character jitters', () => {

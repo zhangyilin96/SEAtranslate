@@ -222,7 +222,7 @@ export function advanceOcrConsensus(
     // OCR frame as a clear new Dota call. Publish only the strong rows instead
     // of making one low-confidence tree/UI fragment block the whole batch.
     const partialEmptyWindowFastPath = state.committed.length === 0 && fastIndices.length > 0
-    if (allFast || partialEmptyWindowFastPath) {
+    if (allFast) {
       const appendedCanonical = canonical.slice(-appendedCount)
       let publish = fastIndices.map((index) => appendedCanonical[index]).filter(Boolean).slice(-3)
       if (!difference.orderedAppend) {
@@ -234,6 +234,25 @@ export function advanceOcrConsensus(
       return { state, publish, needsFollowUp: false, fastPath: true, stableLineCount }
     }
     const appendedResolved = resolved.slice(-appendedCount)
+    if (partialEmptyWindowFastPath || state.committed.length === 0 && appendedResolved.some((line) => line.stable)) {
+      const acceptedIndices = appendedResolved.flatMap((line, index) => line.stable || fastIndices.includes(index) ? [index] : [])
+      const acceptedCandidates = acceptedIndices.map((index) => appendedResolved[index].stable
+        ? appendedResolved[index].line
+        : canonical.slice(-appendedCount)[index])
+      const filtered = filterFallbackDuplicates(state, acceptedCandidates, now)
+      state = { ...state, seenAt: filtered.seenAt }
+      const pending = markPending(state, current)
+      // Do not commit the entire OCR window when only some rows are trustworthy.
+      // Otherwise the noisy neighbours become "old chat" and later stable rows
+      // can never be published from the same burst.
+      return {
+        state: pending.state,
+        publish: filtered.publish.slice(-3),
+        needsFollowUp: pending.needsFollowUp,
+        fastPath: fastIndices.length > 0,
+        stableLineCount,
+      }
+    }
     if (appendedResolved.length && appendedResolved.every((line) => line.stable)) {
       const accepted = [...canonical.slice(0, -appendedCount), ...appendedResolved.map((line) => line.line)]
       let publish = accepted.slice(-appendedCount).slice(-3)
