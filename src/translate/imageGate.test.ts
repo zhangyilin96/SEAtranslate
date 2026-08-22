@@ -12,11 +12,23 @@ describe('OCR image gate', () => {
   })
 
   it('ignores unchanged frames and triggers after a stable meaningful change', () => {
-    let state = markFrameOcred(createFrameGateState(), frame(0, 0, 0, 0), 1_000)
-    const changed = evaluateFrame(state, frame(255, 0, 0, 0), 3_100)
+    const baseline = frame(...Array.from({ length: 128 }, () => 0))
+    const changedFrame = baseline.slice()
+    changedFrame[40] = 255
+    let state = markFrameOcred(createFrameGateState(), baseline, 1_000)
+    const changed = evaluateFrame(state, changedFrame, 3_100)
     expect(changed.trigger).toBe(false)
-    const stable = evaluateFrame(changed.state, frame(255, 0, 0, 0), 3_500)
+    const stable = evaluateFrame(changed.state, changedFrame, 3_500)
     expect(stable).toMatchObject({ trigger: true, reason: 'changed' })
+  })
+
+  it('triggers immediately when a strong chat change is well above ambient scene noise', () => {
+    const baseline = frame(...Array.from({ length: 128 }, () => 0))
+    const changedFrame = baseline.slice()
+    changedFrame.fill(255, 60, 64)
+    const state = markFrameOcred(createFrameGateState(), baseline, 1_000)
+    const changed = evaluateFrame(state, changedFrame, 3_100)
+    expect(changed).toMatchObject({ trigger: true, reason: 'changed' })
   })
 
   it('uses a slow heartbeat to recover from a missed threshold', () => {
