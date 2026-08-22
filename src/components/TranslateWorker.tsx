@@ -87,7 +87,7 @@ export function TranslateWorker() {
             const baselineTimeout = !consensus.primed && Date.now() - startedAt >= BASELINE_TIMEOUT_MS
             shouldOcr = decision.trigger || baselineTimeout
             triggerStatus = decision.reason === 'heartbeat' ? 'OCR 恢复检查' : '检测到聊天变化'
-            if (!shouldOcr && decision.ocrDifference >= 0.006) nextDelayMs = CHANGE_VERIFY_INTERVAL_MS
+            if (!shouldOcr && gate.lastOcrAt > 0 && decision.ocrDifference >= 0.006) nextDelayMs = CHANGE_VERIFY_INTERVAL_MS
           }
 
           if (shouldOcr) {
