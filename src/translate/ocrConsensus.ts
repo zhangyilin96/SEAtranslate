@@ -184,19 +184,13 @@ export function advanceOcrConsensus(
   const canonical = canonicalizeCurrent(current, resolved, state.committed)
 
   if (!state.primed) {
-    const recentEmptyFrames = [...frames].reverse().findIndex((frame) => frame.lines.length > 0)
-    const emptyBaseline = current.length === 0 && (recentEmptyFrames === -1 ? frames.length : recentEmptyFrames) >= 2
-    const stableBaseline = current.length > 0 && resolved.every((line) => line.stable)
-    const pending = markPending(state, current)
-    state = pending.state
-    if (emptyBaseline || stableBaseline || !pending.needsFollowUp) {
-      const baseline = stableBaseline ? resolved.map((line) => line.line) : current.map((line, index) => resolved[index]?.line || line)
-      const seenAt = new Map(state.seenAt)
-      for (const frame of frames) rememberObservedChatLines(frame.lines.map((line) => line.message), seenAt, now)
-      state = resetPending({ ...state, primed: true, committed: baseline, seenAt })
-      return { state, publish: [], needsFollowUp: false, fastPath: false, stableLineCount }
-    }
-    return { state, publish: [], needsFollowUp: pending.needsFollowUp, fastPath: false, stableLineCount }
+    // Baseline exactly the first completed OCR frame. Waiting for the baseline
+    // itself to reach consensus can absorb real messages sent while Tesseract's
+    // detected row count jitters. Consensus starts with the next changed frame.
+    const seenAt = new Map(state.seenAt)
+    rememberObservedChatLines(current.map((line) => line.message), seenAt, now)
+    state = resetPending({ ...state, primed: true, committed: current, seenAt })
+    return { state, publish: [], needsFollowUp: false, fastPath: false, stableLineCount }
   }
 
   if (current.length === 0 && state.committed.length > 0) {

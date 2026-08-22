@@ -16,9 +16,7 @@ function line(message: string, top = 0, confidence = 80, speaker = 'Kiseki', spe
 }
 
 function prime(lines: OcrChatLine[]) {
-  let state = createOcrConsensusState()
-  state = advanceOcrConsensus(state, lines, 1_000).state
-  const decision = advanceOcrConsensus(state, lines, 1_400)
+  const decision = advanceOcrConsensus(createOcrConsensusState(), lines, 1_000)
   expect(decision.state.primed).toBe(true)
   expect(decision.publish).toEqual([])
   return decision.state
@@ -29,6 +27,21 @@ function feed(state: OcrConsensusState, lines: OcrChatLine[], at: number) {
 }
 
 describe('multi-frame OCR consensus', () => {
+  it('establishes the first OCR frame immediately so later chat is not absorbed into baseline', () => {
+    let state = createOcrConsensusState()
+    const baseline = feed(state, [], 1_000)
+    expect(baseline.state).toMatchObject({ primed: true, committed: [], pendingAttempts: 0 })
+    expect(baseline.needsFollowUp).toBe(false)
+
+    state = baseline.state
+    const firstNewFrame = feed(state, [line('gogogo', 10, 78)], 1_400)
+    expect(firstNewFrame.publish).toEqual([])
+    expect(firstNewFrame.needsFollowUp).toBe(true)
+
+    const stableNewFrame = feed(firstNewFrame.state, [line('gogogo', 10, 78)], 1_800)
+    expect(stableNewFrame.publish.map((candidate) => candidate.message)).toEqual(['gogogo'])
+  })
+
   it.each([
     ['back', '撤'],
     ['back?', '撤'],
