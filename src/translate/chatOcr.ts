@@ -111,13 +111,48 @@ function weightedConfidence(words: OcrWordEvidence[]) {
   return Number((words.reduce((total, word) => total + word.confidence * Math.max(1, [...word.text].length), 0) / totalWeight).toFixed(1))
 }
 
+function rowBaseline(words: MeasuredWord[]) {
+  const bottoms = words.map((word) => word.top + word.height).sort((left, right) => left - right)
+  return bottoms[Math.floor(bottoms.length / 2)] || 0
+}
+
+function mergeVerticallyAlignedGroups(groups: MeasuredWord[][], imageWidth: number) {
+  const anchors = groups.filter((words) => words.some((word) => word.playerColor >= 0.035 && word.left <= imageWidth * .45))
+  if (!anchors.length) return groups
+
+  const assigned = new Set<MeasuredWord[]>()
+  for (const words of groups) {
+    if (anchors.includes(words) || !words.some((word) => word.light >= 0.06)) continue
+    const first = Math.min(...words.map((word) => word.left))
+    const baseline = rowBaseline(words)
+    const match = anchors
+      .map((anchor) => {
+        const colored = anchor.filter((word) => word.playerColor >= 0.035)
+        const coloredRight = Math.max(-1, ...colored.map((word) => word.lastPlayerColorX))
+        const top = Math.min(...anchor.map((word) => word.top))
+        const bottom = Math.max(...anchor.map((word) => word.top + word.height))
+        const tolerance = Math.max(28, Math.min(70, (bottom - top) * .9))
+        const distance = Math.abs(baseline - rowBaseline(anchor))
+        const startsAfterPrefix = coloredRight >= 0 && first >= coloredRight - tolerance
+        return { anchor, distance, tolerance, startsAfterPrefix }
+      })
+      .filter((candidate) => candidate.startsAfterPrefix && candidate.distance <= candidate.tolerance)
+      .sort((left, right) => left.distance - right.distance)[0]
+    if (!match) continue
+    match.anchor.push(...words)
+    match.anchor.sort((left, right) => left.left - right.left)
+    assigned.add(words)
+  }
+  return groups.filter((words) => !assigned.has(words))
+}
+
 export function extractChatLinesFromTsv(tsv: string, image: PixelImage): OcrChatLine[] {
   const groups = new Map<string, OcrWord[]>()
   for (const word of parseTsvWords(tsv)) groups.set(word.lineKey, [...(groups.get(word.lineKey) || []), word])
 
-  const measuredGroups: MeasuredWord[][] = [...groups.values()].map((words) => words
+  const measuredGroups = mergeVerticallyAlignedGroups([...groups.values()].map((words) => words
     .sort((left, right) => left.left - right.left)
-    .map((word) => ({ ...word, ...colorRatios(image, word) })))
+    .map((word) => ({ ...word, ...colorRatios(image, word) }))), image.width)
   const hasPlayerColorText = measuredGroups.some((measured) => measured.some((item) => item.playerColor >= 0.035))
   const lines: OcrChatLine[] = []
   for (const measured of measuredGroups) {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { extractChatLinesFromTsv, type PixelImage } from './chatOcr'
 
-function wordTsv(word: string, wordNumber: number, left: number, width: number, confidence = 90, lineNumber = 1, top = 2) {
-  return `5\t1\t1\t1\t${lineNumber}\t${wordNumber}\t${left}\t${top}\t${width}\t12\t${confidence}\t${word}`
+function wordTsv(word: string, wordNumber: number, left: number, width: number, confidence = 90, lineNumber = 1, top = 2, blockNumber = 1) {
+  return `5\t1\t${blockNumber}\t1\t${lineNumber}\t${wordNumber}\t${left}\t${top}\t${width}\t12\t${confidence}\t${word}`
 }
 
 function imageWithWords(colors: Array<{ left: number; width: number; rgb: [number, number, number]; top?: number }>): PixelImage {
@@ -121,5 +121,19 @@ describe('Dota chat color-aware OCR extraction', () => {
       { left: 105, width: 30, rgb: [245, 245, 235] },
     ])
     expect(textOnly(extractChatLinesFromTsv(tsv, image))).toEqual([{ speaker: 'kiseki', message: 'stfu' }])
+  })
+
+  it('reattaches a message that Tesseract split into another TSV block on the same visual row', () => {
+    const tsv = [
+      wordTsv('kiseki', 1, 20, 42),
+      wordTsv('[TAG]:', 2, 68, 38),
+      wordTsv('back', 1, 114, 32, 88, 1, 2, 2),
+    ].join('\n')
+    const image = imageWithWords([
+      { left: 20, width: 42, rgb: [35, 125, 245] },
+      { left: 68, width: 38, rgb: [35, 125, 245] },
+      { left: 114, width: 32, rgb: [245, 245, 235] },
+    ])
+    expect(textOnly(extractChatLinesFromTsv(tsv, image))).toEqual([{ speaker: 'kiseki', message: 'back' }])
   })
 })

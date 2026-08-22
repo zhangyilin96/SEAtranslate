@@ -9,7 +9,10 @@ async function createConfiguredWorker(languages: string[]) {
   const active = await createWorker(languages, undefined, {
       logger: (message) => progressListener?.(message.status || 'loading', message.progress || 0),
   })
-  await active.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_COLUMN, preserve_interword_spaces: '1', user_defined_dpi: '300' })
+  // Dota renders the colored player/tag prefix and the white message on one
+  // visual row. SINGLE_COLUMN can split those colors into separate TSV blocks,
+  // leaving the parser with a speaker-only row and an orphaned message.
+  await active.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK, preserve_interword_spaces: '1', user_defined_dpi: '300' })
   return active
 }
 
